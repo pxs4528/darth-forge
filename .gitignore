@@ -1,0 +1,18 @@
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env.local
+
+# Backend
+backend/tmp/
+backend/*.exe
+backend/*.dll
+backend/*.so
+backend/*.dylib
+backend/.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store
