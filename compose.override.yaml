@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  backend:
+    # Development: use dev env file
+    env_file:
+      - .env.dev
+    # Development: expose port for direct access/debugging
+    # Using 8081 to avoid conflict with frontend on 8080
+    ports:
+      - "8081:8080"
+
+  frontend:
+    env_file:
+      - .env.dev
+    environment:
+      - CADDY_DEBUG=debug
+    # Development: different port to avoid conflicts with local nginx
+    ports:
+      - "8080:80"

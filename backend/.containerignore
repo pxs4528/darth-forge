@@ -1,0 +1,32 @@
+# Git
+.git
+.gitignore
+
+# Environment files
+.env*
+
+# Documentation
+*.md
+README.md
+
+# IDE
+.vscode
+.idea
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Compiled binaries (we build inside container)
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Temporary files
+tmp/
+temp/
+
+# Test cache
+*.test

@@ -1,0 +1,49 @@
+  version: '3.8'
+
+  services:
+    backend:
+      build:
+        context: ./backend
+        dockerfile: Containerfile
+      container_name: ${COMPOSE_PROJECT_NAME:-darth-forge}-backend
+      env_file:
+        - .env.dev  # Default to dev
+      expose:
+        - "8080"
+      restart: unless-stopped
+      # healthcheck:
+      #   test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/api/health"]
+      #   interval: 30s
+      #   timeout: 10s
+      #   retries: 3
+
+    frontend:
+      build:
+        context: ./frontend
+        dockerfile: Containerfile
+      container_name: ${COMPOSE_PROJECT_NAME:-darth-forge}-frontend
+      env_file:
+        - .env.dev  # Default to dev
+      environment:
+        - WEB_ROOT=/srv
+        - API_HOST=backend
+        - API_PORT=8080
+      ports:
+        - "${FRONTEND_PORT:-8080}:80"
+      depends_on:
+        - backend
+      restart: unless-stopped
+
+    # Optional: Add Postgres for learning
+    # postgres:
+    #   image: postgres:alpine
+    #   container_name: ${COMPOSE_PROJECT_NAME:-darth-forge}-db
+    #   env_file:
+    #     - .env.dev
+    #   volumes:
+    #     - postgres_data:/var/lib/postgresql/data
+    #   expose:
+    #     - "5432"
+
+  # volumes:
+  #   postgres_data:

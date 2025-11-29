@@ -1,0 +1,26 @@
+  version: '3.8'
+
+  services:
+    backend:
+      env_file:
+        - .env.prod
+      # Production: don't mount volumes
+      # Production: use compiled binary, not go run
+      restart: always
+      logging:
+        driver: "json-file"
+        options:
+          max-size: "10m"
+          max-file: "3"
+
+    frontend:
+      env_file:
+        - .env.prod
+      environment:
+        - DOMAIN=${DOMAIN}  # For HTTPS
+      restart: always
+      logging:
+        driver: "json-file"
+        options:
+          max-size: "10m"
+          max-file: "3"
