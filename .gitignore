@@ -16,3 +16,13 @@ backend/.env
 .idea/
 *.swp
 .DS_Store
+
+# Environment files - be specific
+.env.local          # Local development secrets
+.env.prod           # Production secrets (create from .env.prod.example)
+.env.secrets        # Any secrets file
+*.secrets
+.env.dev
+.env.local
+.env.prod
+.env.prod.example
