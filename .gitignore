@@ -26,3 +26,7 @@ backend/.env
 .env.local
 .env.prod
 .env.prod.example
+
+# CI/CD
+.cicd/*.log
+.cicd/.webhook_secret

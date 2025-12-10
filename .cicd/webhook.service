@@ -1,0 +1,19 @@
+[Unit]
+Description=GitHub Webhook Listener for darth-forge
+After=network.target
+
+[Service]
+Type=simple
+User=darth
+WorkingDirectory=/home/darth/darth-forge
+Environment="WEBHOOK_PORT=9000"
+Environment="WEBHOOK_SECRET=ee4748cf58734035f5006ec0fd3533a9d78e63484439991acf71faedb8b4d49a"
+Environment="DEPLOY_SCRIPT=/home/darth/darth-forge/.cicd/deploy.sh"
+ExecStart=/usr/bin/python3 /home/darth/darth-forge/.cicd/webhook-listener.py
+Restart=always
+RestartSec=10
+StandardOutput=append:/home/darth/darth-forge/.cicd/webhook.log
+StandardError=append:/home/darth/darth-forge/.cicd/webhook.log
+
+[Install]
+WantedBy=multi-user.target
