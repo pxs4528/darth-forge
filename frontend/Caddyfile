@@ -2,8 +2,8 @@
 	{$CADDY_DEBUG:}
 }
 
-# Site address with optional domain and port
-{$DOMAIN:localhost}:{$PORT:80} {
+# Listen on all hosts (required for Cloudflare Tunnel)
+:{$PORT:80} {
 	bind {$BIND_ADDRESS:0.0.0.0}
 
 	root * {$WEB_ROOT:/srv}
