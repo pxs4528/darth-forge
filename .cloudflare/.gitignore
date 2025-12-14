@@ -1,0 +1,9 @@
+# Ignore generated configuration files
+config.yml
+
+# Ignore credentials (sensitive)
+*.json
+cert.pem
+
+# Ignore logs
+*.log
