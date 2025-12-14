@@ -127,24 +127,22 @@ podman-compose down
 
 ### Local Development (No Containers)
 
-Run services directly in WSL for faster iteration:
+Run services directly for faster iteration with hot module reload:
 
 ```bash
-# Terminal 1: Frontend
+# Terminal 1: Frontend (Vite dev server)
 cd frontend
 npm install
 npm run dev
-# Runs on http://localhost:5173
+# Runs on http://localhost:5173 with instant HMR
 
 # Terminal 2: Backend
 cd backend
 go run cmd/api/main.go
 # Runs on http://localhost:8080
-
-# Terminal 3: Caddy (optional)
-export $(cat .env.local | xargs)
-caddy run
 ```
+
+**Note:** Vite's dev server automatically proxies `/api/*` requests to the backend (configured in `vite.config.ts`). No additional proxy needed!
 
 ## 📦 Podman Compose Commands
 
@@ -437,12 +435,13 @@ darth-forge/
 │   ├── .containerignore     # Files to exclude from image
 │   └── go.mod
 ├── nginx/                   # nginx configs (for reference)
+├── .cloudflare/             # Cloudflare Tunnel setup files
 ├── compose.yaml             # Base compose configuration
 ├── compose.override.yaml    # Development overrides (auto-loaded)
 ├── compose.prod.yaml        # Production overrides
-├── Caddyfile                # Caddyfile for local development
 ├── .env.dev                 # Development environment
 ├── .env.prod.example        # Production template
+├── DEPLOYMENT.md            # Deployment guide
 └── README.md                # This file
 ```
 
