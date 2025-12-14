@@ -4,7 +4,8 @@
   "scripts": {
     "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
     "dev:frontend": "cd frontend && npm run dev",
-    "dev:backend": "cd backend && go run cmd/api/main.go"
+    "dev:backend": "cd backend && go run cmd/api/main.go",
+    "lint" : "cd frontend && npx eslint 'src/**/*.{tsx}' --fix" 
   },
   "devDependencies": {
     "concurrently": "^7.6.0"
