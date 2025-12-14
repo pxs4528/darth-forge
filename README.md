@@ -1,8 +1,31 @@
 # Darth Forge
 
-A production-ready personal website built with SolidJS frontend, Go backend, and containerized with Podman. Designed for self-hosting on Raspberry Pi with full CI/CD pipeline.
+A production-ready personal website built with SolidJS frontend, Go backend, and containerized with Podman. Self-hosted on Raspberry Pi with Cloudflare Tunnel and automated CI/CD pipeline.
+
+**🌐 Live:** https://pipboi.dev
+
+## ✨ Features
+
+- 🚀 Automatic deployment on git push
+- 🔒 Secure Cloudflare Tunnel (no port forwarding)
+- 🆓 Zero cost hosting ($0/month)
+- 📦 Containerized with Podman
+- 🔄 CI/CD with GitHub webhooks
+- 🌐 Custom domain with HTTPS
 
 ## 🏗️ Architecture
+
+### Production (Self-Hosted on Raspberry Pi)
+
+```
+Browser → Cloudflare Edge (DDoS, SSL) → Cloudflare Tunnel → Raspberry Pi
+                                                              ├─ Frontend Container (Caddy + SolidJS)
+                                                              └─ Backend Container (Go API)
+
+Developer → git push → GitHub → Webhook → Cloudflare Tunnel → Webhook Listener → Auto Deploy
+```
+
+### Local Development
 
 ```
 Browser → Caddy (Frontend Container) → Go API (Backend Container)
@@ -14,8 +37,8 @@ Browser → Caddy (Frontend Container) → Go API (Backend Container)
 - **Frontend:** SolidJS, Vite, TailwindCSS, Caddy web server
 - **Backend:** Go 1.21, standard library HTTP server
 - **Containerization:** Podman (Docker-compatible)
-- **Deployment:** Ansible, GitHub Actions
-- **Monitoring:** Prometheus, Grafana (planned)
+- **Deployment:** Cloudflare Tunnel, GitHub Webhooks
+- **Hosting:** Raspberry Pi (self-hosted, $0/month)
 
 ## 📋 Prerequisites
 
@@ -499,16 +522,38 @@ podman-compose build --no-cache
 podman-compose up
 ```
 
+## 🚀 Deployment
+
+This project is fully deployed and running on a Raspberry Pi with automatic CI/CD.
+
+**For deployment instructions, see [DEPLOYMENT.md](./DEPLOYMENT.md)**
+
+### Quick Deploy Workflow
+
+```bash
+# On your development machine
+git add .
+git commit -m "Your changes"
+git push
+
+# Automatic deployment happens:
+# 1. GitHub sends webhook to Cloudflare Tunnel
+# 2. Raspberry Pi receives webhook
+# 3. Pulls latest code
+# 4. Rebuilds containers
+# 5. Restarts services
+# 6. Live in ~2 minutes at https://pipboi.dev
+```
+
 ## 🎯 Next Steps
 
+- [x] Deploy to Raspberry Pi
+- [x] Configure domain with Cloudflare Tunnel
+- [x] Set up GitHub webhook CI/CD
 - [ ] Add database (PostgreSQL)
-- [ ] Set up GitHub Actions CI/CD
-- [ ] Configure Ansible for automated deployment
 - [ ] Add Prometheus + Grafana monitoring
-- [ ] Deploy to Raspberry Pi
-- [ ] Configure domain with Cloudflare Tunnel
 - [ ] Add automated tests
-- [ ] Implement features from text.txt roadmap
+- [ ] Implement features from project roadmap
 
 ## 📚 Resources
 
