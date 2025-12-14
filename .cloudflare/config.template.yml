@@ -1,0 +1,36 @@
+# Cloudflare Tunnel Configuration Template
+# This file will be copied to ~/.cloudflared/config.yml during setup
+
+# Tunnel ID - will be set during tunnel creation
+tunnel: TUNNEL_ID_PLACEHOLDER
+
+# Credentials file - will be set during tunnel creation
+credentials-file: CREDENTIALS_FILE_PLACEHOLDER
+
+# Ingress rules - routes traffic from Cloudflare to your local services
+ingress:
+  # Main web application (SolidJS frontend + Go backend via Caddy)
+  # Replace DOMAIN_PLACEHOLDER with your actual domain (e.g., darth-forge.com)
+  - hostname: DOMAIN_PLACEHOLDER
+    service: http://localhost:80
+    originRequest:
+      noTLSVerify: false
+      connectTimeout: 30s
+
+  # GitHub webhook listener
+  # Replace DOMAIN_PLACEHOLDER with your actual domain (e.g., darth-forge.com)
+  - hostname: webhook.DOMAIN_PLACEHOLDER
+    service: http://localhost:9000
+    originRequest:
+      noTLSVerify: false
+      connectTimeout: 30s
+
+  # Catch-all rule (required by Cloudflare Tunnel)
+  - service: http_status:404
+
+# Log configuration
+logDirectory: /var/log/cloudflared
+loglevel: info
+
+# Metrics
+metrics: localhost:9001
