@@ -1,32 +1,43 @@
-# Frontend
-frontend/node_modules/
-frontend/dist/
-frontend/.env.local
+# Dependencies
+node_modules/
 
-# Backend
+# Frontend build
+frontend/dist/
+frontend/.wrangler
+frontend/.output
+frontend/.vercel
+frontend/.netlify
+frontend/.vinxi
+
+# Backend build & temp
 backend/tmp/
 backend/*.exe
 backend/*.dll
 backend/*.so
 backend/*.dylib
-backend/.env
+
+# Environment files
+.env
+.env*.local
+.env.prod
+.env.secrets
+*.secrets
 
 # IDE
 .vscode/
 .idea/
 *.swp
 .DS_Store
-
-# Environment files - be specific
-.env.local          # Local development secrets
-.env.prod           # Production secrets (create from .env.prod.example)
-.env.secrets        # Any secrets file
-*.secrets
-.env.dev
-.env.local
-.env.prod
-.env.prod.example
+Thumbs.db
+.project
+.classpath
+*.launch
+.settings/
 
 # CI/CD
 .cicd/*.log
 .cicd/.webhook_secret
+
+# Lock files (keep only package-lock.json)
+pnpm-lock.yaml
+yarn.lock
