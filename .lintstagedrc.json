@@ -1,0 +1,5 @@
+{
+  "frontend/src/**/*.{ts,tsx}": ["eslint --fix", "prettier --write"],
+  "frontend/src/**/*.{json,md,css}": ["prettier --write"],
+  "backend/**/*.go": ["gofmt -w"]
+}

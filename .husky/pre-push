@@ -1,0 +1,6 @@
+# Run frontend tests if they exist
+cd frontend && npm run test --if-present
+cd ..
+
+# Run backend tests
+cd backend && go test ./... -v
