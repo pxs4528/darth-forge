@@ -19,8 +19,8 @@
 
     frontend:
       build:
-        context: ./frontend
-        dockerfile: Containerfile
+        context: .
+        dockerfile: frontend/Containerfile
       container_name: ${COMPOSE_PROJECT_NAME:-darth-forge}-frontend
       env_file:
         - .env.dev  # Default to dev
