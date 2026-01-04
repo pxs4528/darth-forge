@@ -1,6 +1,6 @@
 import { createSignal, createEffect, onMount } from "solid-js";
 
-const files = ["Home.tsx", "About.tsx", "Contact.tsx", "README.md", "styles.css"];
+const files = ["Home", "About", "Experience", "Projects", "Skills", "Contact"];
 
 const FileIcon = () => (
   <svg
@@ -154,8 +154,8 @@ const Navbar = (props: Props) => {
           tabIndex={0}
           onKeyDown={(e) => onKeyDown(e as KeyboardEvent)}>
           <div class="flex items-center justify-between">
-            <div class="text-xs uppercase text-gray-400 mb-3">Files</div>
-            <div class="hidden md:block text-xs text-gray-400">Select with ↑ ↓</div>
+            <div class="text-xs uppercase text-gray-400 mb-3">Navigation</div>
+            <div class="hidden md:block text-xs text-gray-400">↑ ↓</div>
           </div>
 
           <ul class="flex flex-col gap-1" role="listbox" aria-activedescendant={active()}>
@@ -177,7 +177,7 @@ const Navbar = (props: Props) => {
           </ul>
 
           <div class="mt-4 text-[13px] text-gray-300">
-            Selected: <span class="font-medium">{active()}</span>
+            <span class="font-medium">{active()}</span>
           </div>
         </nav>
       </aside>
