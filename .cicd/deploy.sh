@@ -27,11 +27,11 @@ podman build --network=host -f frontend/Containerfile -t darth-forge_frontend:la
 
 # Stop old containers
 echo "[4/5] Stopping old containers..." | tee -a "$LOG_FILE"
-podman-compose -f compose.yaml -f compose.prod.yaml down 2>&1 | tee -a "$LOG_FILE" || true
+sudo podman-compose -f compose.yaml -f compose.prod.yaml down 2>&1 | tee -a "$LOG_FILE" || true
 
 # Start new containers
 echo "[5/5] Starting new containers..." | tee -a "$LOG_FILE"
-podman-compose -f compose.yaml -f compose.prod.yaml up -d 2>&1 | tee -a "$LOG_FILE"
+sudo podman-compose -f compose.yaml -f compose.prod.yaml up -d 2>&1 | tee -a "$LOG_FILE"
 
 # Verify deployment
 echo "" | tee -a "$LOG_FILE"
