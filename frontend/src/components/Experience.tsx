@@ -42,7 +42,7 @@ const Experience: Component = () => {
               </div>
               <div class="space-y-2">
                 {exp.highlights.map((highlight) => (
-                  <div class="terminal-prompt text-green-500">{highlight}</div>
+                  <div class="terminal-prompt text-white">{highlight}</div>
                 ))}
               </div>
             </div>

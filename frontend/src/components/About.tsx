@@ -8,7 +8,7 @@ const About: Component = () => {
           <span class="text-green-400 text-2xl">$ cat about.txt</span>
         </div>
 
-        <div class="terminal-window p-6 space-y-4 text-green-500">
+        <div class="terminal-window p-6 space-y-4 text-white">
           <p class="terminal-prompt">
             Software Engineer @ General Motors | Building full-stack features in Next.js for 17K+ users
           </p>

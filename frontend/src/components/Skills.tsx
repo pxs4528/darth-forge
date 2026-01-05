@@ -27,16 +27,16 @@ const Skills: Component = () => {
           {skillCategories.map((category) => (
             <div>
               <div class="text-green-400 mb-2">[{category.category}]</div>
-              <div class="terminal-prompt text-green-500">{category.skills}</div>
+              <div class="terminal-prompt text-white">{category.skills}</div>
             </div>
           ))}
 
           <div class="border-t-2 border-green-900 pt-4 mt-6">
             <div class="text-green-400 mb-2">[Education]</div>
-            <div class="terminal-prompt text-green-500">
+            <div class="terminal-prompt text-white">
               The University of Texas at Arlington
             </div>
-            <div class="terminal-prompt text-green-500">
+            <div class="terminal-prompt text-white">
               B.S. Computer Science | Magna Cum Laude | GPA: 3.76 | Class of 2025
             </div>
           </div>
