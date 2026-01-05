@@ -2,7 +2,7 @@
 
   services:
     backend:
-      image: localhost/darth-forge_backend:latest
+      image: darth-forge_backend:latest
       build:
         context: ./backend
         dockerfile: Containerfile
@@ -19,7 +19,7 @@
       #   retries: 3
 
     frontend:
-      image: localhost/darth-forge_frontend:latest
+      image: darth-forge_frontend:latest
       build:
         context: .
         dockerfile: frontend/Containerfile
