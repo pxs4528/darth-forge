@@ -6,20 +6,20 @@ const experiences = [
     company: "General Motors",
     period: "Current",
     highlights: [
-      "Built and scaled full-stack features in Next.js serving 17K+ users, optimizing API performance and implementing efficient state management patterns that reduced unnecessary re-renders and improved application responsiveness",
-      "Drove monorepo modernization by migrating to latest Next.js/Nx versions, refactoring 15+ legacy components to improve build times and developer velocity while establishing reusable architectural patterns across multiple teams",
-      "Implemented data-driven product decisions through A/B testing with LaunchDarkly, analyzing user behavior to optimize conversion funnels and establishing feature flag best practices that reduced technical debt from stale configurations",
-      "Designed end-to-end testing strategy with Cypress, achieving comprehensive coverage of critical user flows and integrating into CI/CD pipeline to prevent regressions and accelerate deployment velocity",
-      "Owned production reliability through on-call rotation, building monitoring dashboards for proactive incident detection that improved incident response times while maintaining 99.9% uptime",
+      "Built full-stack features in Next.js serving 17K+ users",
+      "Drove monorepo modernization (Next.js/Nx migration)",
+      "Implemented A/B testing with LaunchDarkly",
+      "Designed E2E testing strategy with Cypress",
+      "Maintained 99.9% uptime via on-call rotation",
     ],
   },
   {
     title: "Software Engineer & Research Assistant",
-    company: "The University of Texas at Arlington - EECS Department",
-    period: "September 2023 – May 2024",
+    company: "UT Arlington - EECS Department",
+    period: "Sept 2023 – May 2024",
     highlights: [
-      "Architected full-stack Android application in Java for real-time environment monitoring interfacing with custom PCB sensor hardware",
-      "Designed distributed Spring Boot microservices handling 100K+ daily sensor readings, implementing event-driven architecture with message queuing for reliable data processing at scale",
+      "Architected Android app for real-time environment monitoring",
+      "Designed Spring Boot microservices (100K+ daily sensor readings)",
     ],
   },
 ];
@@ -28,23 +28,23 @@ const Experience: Component = () => {
   return (
     <section id="experience" class="min-h-screen px-4 py-20">
       <div class="max-w-4xl mx-auto">
-        <h2 class="text-4xl md:text-5xl font-bold mb-12 text-purple-400">Experience</h2>
-        <div class="space-y-12">
+        <div class="mb-6">
+          <span class="text-green-400 text-2xl">$ ls -la experience/</span>
+        </div>
+
+        <div class="space-y-6">
           {experiences.map((exp) => (
-            <div class="border-l-2 border-purple-500 pl-6">
-              <div class="mb-4">
-                <h3 class="text-2xl font-bold text-white">{exp.title}</h3>
-                <p class="text-xl text-gray-300">{exp.company}</p>
-                <p class="text-sm text-gray-500">{exp.period}</p>
+            <div class="terminal-window p-6">
+              <div class="mb-3">
+                <div class="text-green-400 font-bold">{exp.title}</div>
+                <div class="text-green-500">{exp.company}</div>
+                <div class="text-green-600 text-sm">{exp.period}</div>
               </div>
-              <ul class="space-y-3">
+              <div class="space-y-2">
                 {exp.highlights.map((highlight) => (
-                  <li class="text-gray-400 flex gap-3">
-                    <span class="text-purple-400 mt-1.5">▹</span>
-                    <span>{highlight}</span>
-                  </li>
+                  <div class="terminal-prompt text-green-500">{highlight}</div>
                 ))}
-              </ul>
+              </div>
             </div>
           ))}
         </div>
