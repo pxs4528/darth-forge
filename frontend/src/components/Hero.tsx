@@ -1,5 +1,6 @@
 import type { Component } from "solid-js";
 import { createSignal, onMount, onCleanup } from "solid-js";
+import { telemetry } from "../services/telemetry";
 
 const asciiArt = [
   `
@@ -83,14 +84,17 @@ const Hero: Component = () => {
             <span class="text-[#5bff4d] font-bold">[connect]</span>
             <div class="ml-4 mt-2 flex gap-4 flex-wrap">
               <a href="mailto:parthsharma.cs@gmail.com"
+                 onClick={() => telemetry.trackClick("email-link")}
                  class="text-[#5bff4d] hover:bg-[#5bff4d]/20 px-3 py-1 border border-[#5bff4d] transition-colors">
                 email
               </a>
               <a href="https://github.com/pxs4528" target="_blank" rel="noopener noreferrer"
+                 onClick={() => telemetry.trackClick("github-link")}
                  class="text-[#5bff4d] hover:bg-[#5bff4d]/20 px-3 py-1 border border-[#5bff4d] transition-colors">
                 github
               </a>
               <a href="https://www.linkedin.com/in/parthsharma0310/" target="_blank" rel="noopener noreferrer"
+                 onClick={() => telemetry.trackClick("linkedin-link")}
                  class="text-[#5bff4d] hover:bg-[#5bff4d]/20 px-3 py-1 border border-[#5bff4d] transition-colors">
                 linkedin
               </a>
