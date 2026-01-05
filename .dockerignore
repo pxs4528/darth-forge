@@ -1,0 +1,15 @@
+# Ignore backend files for frontend builds
+backend/
+.git/
+.cicd/
+*.md
+.gitignore
+compose.yaml
+compose.prod.yaml
+
+# Node modules (will be installed in container)
+node_modules/
+frontend/node_modules/
+
+# Build outputs
+frontend/dist/
