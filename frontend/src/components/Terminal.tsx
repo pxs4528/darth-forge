@@ -1,5 +1,6 @@
 import type { Component } from "solid-js";
 import { createSignal, For, onMount } from "solid-js";
+import { telemetry } from "../services/telemetry";
 
 type CommandOutput = {
   command: string;
@@ -22,19 +23,21 @@ const Terminal: Component = () => {
   contact    - Jump to Contact section
   whoami     - Display system info
   clear      - Clear terminal output
-  ls         - List available sections`,
+  ls         - List available sections
+  logs       - Open live log viewer`,
 
     whoami: `Parth Sharma (aka pipboi / darth)
 Software Engineer @ General Motors
 Building scalable apps for 17K+ users
 Location: Texas, USA`,
 
-    ls: `total 6
+    ls: `total 7
 drwxr-xr-x  about/
 drwxr-xr-x  experience/
 drwxr-xr-x  projects/
 drwxr-xr-x  skills/
-drwxr-xr-x  contact/`,
+drwxr-xr-x  contact/
+drwxr-xr-x  logs/`,
 
     about: "Navigating to About section...",
     experience: "Navigating to Experience section...",
@@ -48,10 +51,26 @@ drwxr-xr-x  contact/`,
 
     if (trimmedCmd === "clear") {
       setHistory([]);
+      telemetry.trackCommand("clear");
+      return;
+    }
+
+    if (trimmedCmd === "logs") {
+      const element = document.getElementById("logs");
+      if (element) {
+        setTimeout(() => {
+          element.scrollIntoView({ behavior: "smooth", block: "start" });
+        }, 100);
+      }
+      setHistory([...history(), { command: cmd, output: "Navigating to Logs section..." }]);
+      setInput("");
+      telemetry.trackCommand("logs");
+      telemetry.trackNavigation("terminal", "logs");
       return;
     }
 
     let output = "";
+    let commandFound = true;
 
     if (trimmedCmd === "") {
       return;
@@ -59,17 +78,23 @@ drwxr-xr-x  contact/`,
       output = commands[trimmedCmd];
 
       // Navigate to sections
-      if (["about", "experience", "projects", "skills", "contact", "home"].includes(trimmedCmd)) {
+      if (["about", "experience", "projects", "skills", "contact", "home", "logs"].includes(trimmedCmd)) {
         const element = document.getElementById(trimmedCmd);
         if (element) {
           setTimeout(() => {
             element.scrollIntoView({ behavior: "smooth", block: "start" });
           }, 100);
         }
+        telemetry.trackCommand(trimmedCmd);
+        telemetry.trackNavigation("terminal", trimmedCmd);
+      } else {
+        telemetry.trackCommand(trimmedCmd);
       }
     } else {
       output = `Command not found: ${trimmedCmd}
 Type 'help' for available commands.`;
+      commandFound = false;
+      telemetry.trackCommand(trimmedCmd, false);
     }
 
     setHistory([...history(), { command: cmd, output }]);

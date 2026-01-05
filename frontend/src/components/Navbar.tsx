@@ -1,6 +1,7 @@
 import { createSignal } from "solid-js";
+import { telemetry } from "../services/telemetry";
 
-const files = ["home", "about", "experience", "projects", "skills", "contact"];
+const files = ["home", "about", "experience", "projects", "skills", "contact", "logs"];
 
 type Props = {
   onSelect?: (_selectedFile: string) => void;
@@ -18,6 +19,10 @@ const Navbar = (props: Props) => {
     if (props.onSelect) {
       props.onSelect(f);
     }
+
+    // Track navigation
+    telemetry.trackClick(`navbar-${f}`);
+    telemetry.trackNavigation("navbar", f);
   };
 
   return (
