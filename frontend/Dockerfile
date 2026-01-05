@@ -4,6 +4,8 @@ COPY package*.json ./
 RUN npm install
 ARG CACHEBUST=1
 COPY frontend ./frontend
+# Limit Node.js memory to prevent OOM on Raspberry Pi
+ENV NODE_OPTIONS="--max-old-space-size=1536"
 RUN npm run build
 
 FROM docker.io/library/caddy:2
