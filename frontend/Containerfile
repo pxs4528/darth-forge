@@ -2,6 +2,7 @@ FROM docker.io/library/node:20-slim AS builder
 WORKDIR /app
 COPY package*.json ./
 RUN npm install
+ARG CACHEBUST=1
 COPY frontend ./frontend
 RUN npm run build
 

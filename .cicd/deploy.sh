@@ -22,8 +22,8 @@ git reset --hard origin/main 2>&1 | tee -a "$LOG_FILE"
 echo "[2/5] Building backend image..." | tee -a "$LOG_FILE"
 podman build --network=host -f backend/Containerfile -t darth-forge_backend:latest backend/ 2>&1 | tee -a "$LOG_FILE"
 
-echo "[3/5] Building frontend image (forcing clean build)..." | tee -a "$LOG_FILE"
-podman build --no-cache --network=host -f frontend/Containerfile -t darth-forge_frontend:latest . 2>&1 | tee -a "$LOG_FILE"
+echo "[3/5] Building frontend image..." | tee -a "$LOG_FILE"
+podman build --build-arg CACHEBUST=$(date +%s) --network=host -f frontend/Containerfile -t darth-forge_frontend:latest . 2>&1 | tee -a "$LOG_FILE"
 
 # Stop old containers
 echo "[4/5] Stopping old containers..." | tee -a "$LOG_FILE"
