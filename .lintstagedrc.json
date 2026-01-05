@@ -1,5 +1,8 @@
 {
-  "frontend/src/**/*.{ts,tsx}": ["eslint --fix", "prettier --write"],
-  "frontend/src/**/*.{json,md,css}": ["prettier --write"],
-  "backend/**/*.go": ["gofmt -w"]
+  "frontend/src/**/*.{ts,tsx}": [
+    "eslint --fix"
+  ],
+  "frontend/src/**/*.{ts,tsx,json,css,md}": [
+    "prettier --write"
+  ]
 }
