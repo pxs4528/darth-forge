@@ -10,19 +10,21 @@ const About: Component = () => {
 
         <div class="terminal-window p-6 space-y-4 text-white">
           <p class="terminal-prompt">
-            Software Engineer @ General Motors | Building full-stack features in Next.js for 17K+ users
+            software Engineer @ General Motors | building full-stack features for the GM Insurance
+            claims platform
           </p>
           <p class="terminal-prompt">
-            B.S. Computer Science, UT Arlington | Magna Cum Laude | GPA: 3.76
+            B.S. computer science, UT arlington | magna cum laude | GPA: 3.76
           </p>
           <p class="terminal-prompt">
-            Passionate about homelab infrastructure, self-hosting, and GitOps automation
+            if you want to hire me, please reach out via email or linkedin
           </p>
           <p class="terminal-prompt">
-            Running production Raspberry Pi homelab with custom Go services and zero-downtime deployments
+            this website is brought to you by my Raspberry Pi 4 operating intermittently in my home
+            lab
           </p>
           <p class="terminal-prompt">
-            Interests: Distributed Systems | Cloud-Native | Autonomous Robotics | DevOps
+            interests: full-stack | distributed systems | Autonomous Robotics | compilers
           </p>
         </div>
       </div>
