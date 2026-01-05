@@ -2,5 +2,15 @@
   "name": "frontend",
   "version": "0.0.0",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@solidjs/testing-library": "^0.8.10",
+    "@testing-library/jest-dom": "^6.9.1",
+    "jsdom": "^27.4.0",
+    "vitest": "^4.0.16"
+  }
 }
