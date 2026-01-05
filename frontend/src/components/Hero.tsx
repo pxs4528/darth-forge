@@ -35,7 +35,7 @@ const Hero: Component = () => {
     const flickerInterval = setInterval(() => {
       setVisible(false);
       setTimeout(() => setVisible(true), 100);
-    }, 3000);
+    }, 2000);
 
     // Change name occasionally
     const nameInterval = setInterval(() => {
