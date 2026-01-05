@@ -7,6 +7,8 @@ COPY frontend ./frontend
 RUN npm run build
 
 FROM docker.io/library/caddy:alpine
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
 COPY --from=builder /app/frontend/dist /srv
 COPY frontend/Caddyfile /etc/caddy/Caddyfile
 EXPOSE 80
