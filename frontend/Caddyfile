@@ -8,18 +8,23 @@
 
 	root * {$WEB_ROOT:/srv}
 
-	encode gzip
-
-	reverse_proxy /api/* {$API_HOST:backend}:{$API_PORT:8080}
-
-	try_files {path} /index.html
-
-	file_server
-
 	# Production: security headers
 	header {
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
 		Referrer-Policy "no-referrer-when-downgrade"
+	}
+
+	encode gzip
+
+	# API routes - proxy to backend (order matters!)
+	handle /api/* {
+		reverse_proxy {$API_HOST:backend}:{$API_PORT:8080}
+	}
+
+	# SPA routing - serve index.html for all other routes
+	handle {
+		try_files {path} /index.html
+		file_server
 	}
 }

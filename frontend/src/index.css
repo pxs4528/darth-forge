@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&display=swap');
 
 html,
 body,
@@ -14,13 +15,51 @@ html {
 body {
   min-height: 100%;
   background-color: #000 !important;
-  color: #fff !important;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  color: #00ff00 !important;
+  font-family: 'Share Tech Mono', 'Courier New', monospace !important;
+  -webkit-font-smoothing: auto;
+  -moz-osx-font-smoothing: auto;
+}
+
+.terminal-font {
+  font-family: 'Share Tech Mono', 'Courier New', monospace;
+}
+
+.ascii-art {
+  font-family: 'VT323', monospace;
+  line-height: 1;
+  white-space: pre;
+}
+
+.terminal-window {
+  background-color: #000;
+  border: 2px solid #00ff00;
+  box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
+}
+
+.terminal-text {
+  color: #00ff00;
+  text-shadow: 0 0 5px rgba(0, 255, 0, 0.5);
+}
+
+.terminal-prompt::before {
+  content: '> ';
+  color: #00ff00;
 }
 
 .image-render-pixelated {
   image-rendering: pixelated;
   image-rendering: -moz-crisp-edges;
   image-rendering: crisp-edges;
+}
+
+/* CRT scanline effect */
+@keyframes flicker {
+  0% { opacity: 0.97; }
+  50% { opacity: 1; }
+  100% { opacity: 0.97; }
+}
+
+.crt-effect {
+  animation: flicker 0.15s infinite;
 }

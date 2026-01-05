@@ -2,46 +2,16 @@ import type { Component } from "solid-js";
 
 const skillCategories = [
   {
-    category: "Programming Languages",
-    skills: [
-      "TypeScript",
-      "JavaScript",
-      "Python",
-      "Java",
-      "Scala",
-      "C",
-      "Go",
-      "C++",
-      "HTML5",
-      "CSS",
-      "SQL",
-      "NoSQL",
-    ],
+    category: "Languages",
+    skills: "TypeScript, JavaScript, Python, Java, Go, C++, C, Scala, SQL",
   },
   {
-    category: "Frameworks & Libraries",
-    skills: ["Next.js", "Spring Boot", "React", "Node.js", "React Native", "JUnit"],
+    category: "Frameworks",
+    skills: "Next.js, React, Spring Boot, Node.js, SolidJS",
   },
   {
-    category: "Tools & Technologies",
-    skills: [
-      "Azure",
-      "AWS",
-      "Docker",
-      "Kubernetes",
-      "Cypress",
-      "Jest",
-      "MongoDB",
-      "PostgreSQL",
-      "MySQL",
-      "Git",
-      "TensorFlow",
-      "OpenCV",
-      "Podman",
-      "Cloudflare",
-      "LaunchDarkly",
-      "ROS2",
-    ],
+    category: "Tools",
+    skills: "Docker, Kubernetes, AWS, Azure, Git, PostgreSQL, MongoDB, ROS2, Cypress",
   },
 ];
 
@@ -49,32 +19,27 @@ const Skills: Component = () => {
   return (
     <section id="skills" class="min-h-screen px-4 py-20">
       <div class="max-w-4xl mx-auto">
-        <h2 class="text-4xl md:text-5xl font-bold mb-12 text-purple-400">Skills</h2>
-        <div class="space-y-8">
+        <div class="mb-6">
+          <span class="text-green-400 text-2xl">$ grep -r skills</span>
+        </div>
+
+        <div class="terminal-window p-6 space-y-4">
           {skillCategories.map((category) => (
             <div>
-              <h3 class="text-2xl font-bold text-white mb-4">{category.category}</h3>
-              <div class="flex flex-wrap gap-3">
-                {category.skills.map((skill) => (
-                  <span class="px-4 py-2 bg-gray-800 rounded-lg text-gray-300 border border-gray-700 hover:border-purple-500 transition-colors">
-                    {skill}
-                  </span>
-                ))}
-              </div>
+              <div class="text-green-400 mb-2">[{category.category}]</div>
+              <div class="terminal-prompt text-green-500">{category.skills}</div>
             </div>
           ))}
-        </div>
-        <div class="mt-12 p-6 bg-purple-900/20 border border-purple-500/30 rounded-lg">
-          <h3 class="text-xl font-bold text-white mb-3">Education</h3>
-          <p class="text-lg text-gray-300">
-            <strong>The University of Texas at Arlington</strong>
-          </p>
-          <p class="text-gray-400">Bachelor of Science in Computer Science — Magna Cum Laude</p>
-          <p class="text-gray-400">GPA: 3.76 | Class of 2025</p>
-          <p class="text-sm text-gray-500 mt-2">
-            Relevant Coursework: Distributed Systems, Algorithms, Operating Systems, Databases,
-            Computer Networks
-          </p>
+
+          <div class="border-t-2 border-green-900 pt-4 mt-6">
+            <div class="text-green-400 mb-2">[Education]</div>
+            <div class="terminal-prompt text-green-500">
+              The University of Texas at Arlington
+            </div>
+            <div class="terminal-prompt text-green-500">
+              B.S. Computer Science | Magna Cum Laude | GPA: 3.76 | Class of 2025
+            </div>
+          </div>
         </div>
       </div>
     </section>

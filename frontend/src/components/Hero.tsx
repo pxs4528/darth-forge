@@ -3,34 +3,60 @@ import type { Component } from "solid-js";
 const Hero: Component = () => {
   return (
     <section id="home" class="min-h-screen flex items-center justify-center px-4 py-20">
-      <div class="max-w-4xl w-full text-center">
-        <div class="mb-8 flex justify-center">
-          <div class="w-48 h-48 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-6xl font-bold shadow-2xl">
-            PS
+      <div class="max-w-4xl w-full">
+        <pre class="ascii-art text-green-500 text-xs sm:text-sm mb-8 overflow-x-auto">
+{`
+ ██▓███   ▄▄▄       ██▀███  ▄▄▄█████▓ ██░ ██      ██████  ██░ ██  ▄▄▄       ██▀███   ███▄ ▄███▓ ▄▄▄
+▓██░  ██▒▒████▄    ▓██ ▒ ██▒▓  ██▒ ▓▒▓██░ ██▒   ▒██    ▒ ▓██░ ██▒▒████▄    ▓██ ▒ ██▒▓██▒▀█▀ ██▒▒████▄
+▓██░ ██▓▒▒██  ▀█▄  ▓██ ░▄█ ▒▒ ▓██░ ▒░▒██▀▀██░   ░ ▓██▄   ▒██▀▀██░▒██  ▀█▄  ▓██ ░▄█ ▒▓██    ▓██░▒██  ▀█▄
+▒██▄█▓▒ ▒░██▄▄▄▄██ ▒██▀▀█▄  ░ ▓██▓ ░ ░▓█ ░██      ▒   ██▒░▓█ ░██ ░██▄▄▄▄██ ▒██▀▀█▄  ▒██    ▒██ ░██▄▄▄▄██
+▒██▒ ░  ░ ▓█   ▓██▒░██▓ ▒██▒  ▒██▒ ░ ░▓█▒░██▓   ▒██████▒▒░▓█▒░██▓ ▓█   ▓██▒░██▓ ▒██▒▒██▒   ░██▒ ▓█   ▓██▒
+▒▓▒░ ░  ░ ▒▒   ▓▒█░░ ▒▓ ░▒▓░  ▒ ░░    ▒ ░░▒░▒   ▒ ▒▓▒ ▒ ░ ▒ ░░▒░▒ ▒▒   ▓▒█░░ ▒▓ ░▒▓░░ ▒░   ░  ░ ▒▒   ▓▒█░
+░▒ ░       ▒   ▒▒ ░  ░▒ ░ ▒░    ░     ▒ ░▒░ ░   ░ ░▒  ░ ░ ▒ ░▒░ ░  ▒   ▒▒ ░  ░▒ ░ ▒░░  ░      ░  ▒   ▒▒ ░
+░░         ░   ▒     ░░   ░   ░       ░  ░░ ░   ░  ░  ░   ░  ░░ ░  ░   ▒     ░░   ░ ░      ░     ░   ▒
+               ░  ░   ░               ░  ░  ░         ░   ░  ░  ░      ░  ░   ░            ░         ░  ░
+`}
+        </pre>
+
+        <div class="terminal-window p-6 mb-6">
+          <div class="mb-4">
+            <span class="text-green-400">System Info:</span>
+            <div class="ml-4 mt-2 space-y-1">
+              <div class="terminal-prompt">Name: Parth Sharma</div>
+              <div class="terminal-prompt">Role: Software Engineer @ General Motors</div>
+              <div class="terminal-prompt">Location: Texas, USA</div>
+              <div class="terminal-prompt">Specialization: Full-Stack Development, Distributed Systems</div>
+            </div>
+          </div>
+
+          <div class="mb-4">
+            <span class="text-green-400">Current Status:</span>
+            <div class="ml-4 mt-2">
+              <div class="terminal-prompt">Building scalable applications serving 17K+ users</div>
+              <div class="terminal-prompt">Running production homelab on Raspberry Pi</div>
+            </div>
+          </div>
+
+          <div>
+            <span class="text-green-400">Quick Links:</span>
+            <div class="ml-4 mt-2 flex gap-4 flex-wrap">
+              <a href="mailto:parthsharma.cs@gmail.com" class="text-green-500 hover:bg-green-900 px-2 py-1 border border-green-500">
+                [email]
+              </a>
+              <a href="https://github.com/parthsharma" target="_blank" rel="noopener noreferrer"
+                 class="text-green-500 hover:bg-green-900 px-2 py-1 border border-green-500">
+                [github]
+              </a>
+              <a href="https://linkedin.com/in/parth-sharma" target="_blank" rel="noopener noreferrer"
+                 class="text-green-500 hover:bg-green-900 px-2 py-1 border border-green-500">
+                [linkedin]
+              </a>
+            </div>
           </div>
         </div>
-        <h1 class="text-5xl md:text-7xl font-bold mb-4 bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-          Parth Sharma
-        </h1>
-        <h2 class="text-2xl md:text-3xl text-gray-300 mb-6">Software Engineer</h2>
-        <p class="text-lg text-gray-400 mb-8 max-w-2xl mx-auto">
-          Full-stack engineer building scalable applications with Next.js, React, and Go. Currently
-          at General Motors, serving 17K+ users. Passionate about distributed systems, homelab
-          infrastructure, and autonomous robotics.
-        </p>
-        <div class="flex gap-4 justify-center flex-wrap">
-          <a
-            href="mailto:parthsharma.cs@gmail.com"
-            class="px-6 py-3 bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors">
-            Get in Touch
-          </a>
-          <a
-            href="https://github.com/parthsharma"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="px-6 py-3 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors">
-            View GitHub
-          </a>
+
+        <div class="text-green-400 text-sm animate-pulse">
+          <span class="terminal-prompt">Type 'help' for available commands_</span>
         </div>
       </div>
     </section>

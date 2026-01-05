@@ -3,7 +3,13 @@ import { defineConfig } from 'vite';
 import solidPlugin from 'vite-plugin-solid';
 
 export default defineConfig({
-  plugins: [solidPlugin(), tailwindcss()],
+  plugins: [
+    solidPlugin({
+      dev: false, // Disable all dev-only features
+      hot: false, // Disable hot module replacement
+    }),
+    tailwindcss(),
+  ],
   server: {
     port: 3000,
   },
