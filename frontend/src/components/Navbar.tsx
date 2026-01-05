@@ -21,10 +21,10 @@ const Navbar = (props: Props) => {
   };
 
   return (
-    <nav class="sticky top-0 z-50 bg-black border-b-2 border-green-500 px-4 py-3">
+    <nav class="sticky top-0 z-50 bg-black border-b-2 border-white px-4 py-3 shadow-lg">
       <div class="max-w-6xl mx-auto flex items-center justify-between">
-        <div class="text-green-500 font-bold">
-          <span class="text-green-400">root@darth-forge:~$</span>
+        <div class="text-white font-bold">
+          <span>root@darth-forge:~$</span>
         </div>
         <div class="flex gap-4 flex-wrap">
           {files.map((f) => (
@@ -32,8 +32,8 @@ const Navbar = (props: Props) => {
               onClick={() => handleClick(f)}
               class={`px-3 py-1 transition-colors ${
                 active() === f
-                  ? "bg-green-500 text-black"
-                  : "text-green-500 hover:bg-green-900"
+                  ? "bg-[#fff] text-black font-medium"
+                  : "text-white hover:bg-[#fff]/20"
               }`}
             >
               {f}
