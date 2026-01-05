@@ -2,10 +2,9 @@
 
   services:
     backend:
-      image: darth-forge_backend:latest
       build:
         context: ./backend
-        dockerfile: Containerfile
+        dockerfile: Dockerfile
       container_name: ${COMPOSE_PROJECT_NAME:-darth-forge}-backend
       env_file:
         - .env.dev  # Default to dev
@@ -19,10 +18,9 @@
       #   retries: 3
 
     frontend:
-      image: darth-forge_frontend:latest
       build:
         context: .
-        dockerfile: frontend/Containerfile
+        dockerfile: frontend/Dockerfile
       container_name: ${COMPOSE_PROJECT_NAME:-darth-forge}-frontend
       env_file:
         - .env.dev  # Default to dev
