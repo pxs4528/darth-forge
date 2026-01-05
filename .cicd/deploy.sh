@@ -20,11 +20,11 @@ git reset --hard origin/main 2>&1 | tee -a "$LOG_FILE"
 
 # Stop old containers
 echo "[2/3] Stopping old containers..." | tee -a "$LOG_FILE"
-podman-compose -f compose.yaml -f compose.prod.yaml down 2>&1 | tee -a "$LOG_FILE" || true
+docker compose -f compose.yaml -f compose.prod.yaml down 2>&1 | tee -a "$LOG_FILE" || true
 
 # Build and start new containers
 echo "[3/3] Building and starting new containers..." | tee -a "$LOG_FILE"
-podman-compose -f compose.yaml -f compose.prod.yaml up -d --build 2>&1 | tee -a "$LOG_FILE"
+docker compose -f compose.yaml -f compose.prod.yaml up -d --build 2>&1 | tee -a "$LOG_FILE"
 
 # Verify deployment
 echo "" | tee -a "$LOG_FILE"
