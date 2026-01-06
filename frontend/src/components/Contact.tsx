@@ -19,12 +19,6 @@ const Contact: Component = () => {
                 </a>
               </div>
               <div class="terminal-prompt">
-                phone:{" "}
-                <a href="tel:469-664-5069" class="text-white hover:underline">
-                  469-664-5069
-                </a>
-              </div>
-              <div class="terminal-prompt">
                 linkedIn:{" "}
                 <a
                   href="https://www.linkedin.com/in/parthsharma0310/"
