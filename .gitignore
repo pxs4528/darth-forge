@@ -19,9 +19,15 @@ backend/*.dylib
 # Environment files
 .env
 .env*.local
+.env.dev
 .env.prod
+.env.prod.example
 .env.secrets
 *.secrets
+
+# Docker compose overrides
+compose.override.yaml
+compose.prod.yaml
 
 # IDE
 .vscode/
