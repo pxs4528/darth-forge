@@ -1,0 +1,18 @@
+# Docker Compose Override File (Development)
+# Copy this file to compose.override.yaml for local development overrides
+#
+# This file is automatically loaded by docker-compose when present
+# Use it to override settings from compose.yaml for development
+
+version: '3.8'
+
+services:
+  frontend:
+    ports:
+      - "3000:80"  # Expose frontend on port 3000
+
+  backend:
+    ports:
+      - "8080:8080"  # Expose backend on port 8080
+    environment:
+      - ENV=development
