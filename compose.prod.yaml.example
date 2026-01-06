@@ -1,0 +1,24 @@
+# Docker Compose Production Configuration
+# Copy this file to compose.prod.yaml and update with your production settings
+#
+# Usage: docker compose -f compose.yaml -f compose.prod.yaml up -d
+
+version: '3.8'
+
+services:
+  frontend:
+    environment:
+      - DOMAIN=${DOMAIN}
+    # Add production-specific frontend configuration
+    # - SSL/TLS settings
+    # - CDN integration
+    # - Performance optimizations
+
+  backend:
+    environment:
+      - ENV=production
+    # Add production-specific backend configuration
+    # - Database connections
+    # - API keys (use secrets!)
+    # - Logging configuration
+    restart: unless-stopped
