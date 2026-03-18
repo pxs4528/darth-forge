@@ -34,6 +34,17 @@
         - backend
       restart: unless-stopped
 
+    infosec:
+      build:
+        context: ./infosec-api
+        dockerfile: Dockerfile
+      container_name: ${COMPOSE_PROJECT_NAME:-darth-forge}-infosec
+      volumes:
+        - /home/darth/infosec:/infosec:ro
+      expose:
+        - "5000"
+      restart: unless-stopped
+
     # Optional: Add Postgres for learning
     # postgres:
     #   image: postgres:alpine

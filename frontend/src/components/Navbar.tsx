@@ -1,7 +1,7 @@
 import { createSignal } from "solid-js";
 import { telemetry } from "../services/telemetry";
 
-const files = ["home", "about", "experience", "projects", "skills", "contact", "logs"];
+const files = ["home", "about", "experience", "projects", "skills", "contact", "infosec", "logs"];
 
 type Props = {
   onSelect?: (_selectedFile: string) => void;

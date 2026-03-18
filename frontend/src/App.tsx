@@ -8,6 +8,7 @@ import Projects from "./components/Projects";
 import Skills from "./components/Skills";
 import Contact from "./components/Contact";
 import Logs from "./components/Logs";
+import CryptoTools from "./components/CryptoTools";
 import Terminal from "./components/Terminal";
 import { telemetry } from "./services/telemetry";
 
@@ -27,6 +28,7 @@ const App: Component = () => {
         <Projects />
         <Skills />
         <Contact />
+        <CryptoTools />
         <Logs />
       </main>
       <Terminal />
