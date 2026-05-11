@@ -1,5 +1,5 @@
 import type { Component } from "solid-js";
-import { onMount } from "solid-js";
+import { createSignal, onMount, Show } from "solid-js";
 import Navbar from "./components/Navbar";
 import Hero from "./components/Hero";
 import About from "./components/About";
@@ -10,11 +10,13 @@ import Contact from "./components/Contact";
 import Logs from "./components/Logs";
 import CryptoTools from "./components/CryptoTools";
 import Terminal from "./components/Terminal";
+import USCISAdmin from "./components/USCISAdmin";
 import { telemetry } from "./services/telemetry";
 
 const App: Component = () => {
+  const [adminToken, setAdminToken] = createSignal("");
+
   onMount(() => {
-    // Track initial page view
     telemetry.trackPageView("home");
   });
 
@@ -31,7 +33,10 @@ const App: Component = () => {
         <CryptoTools />
         <Logs />
       </main>
-      <Terminal />
+      <Terminal onAdminLogin={setAdminToken} />
+      <Show when={adminToken()}>
+        <USCISAdmin token={adminToken()} onClose={() => setAdminToken("")} />
+      </Show>
     </div>
   );
 };
