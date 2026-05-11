@@ -7,7 +7,11 @@ type CommandOutput = {
   output: string;
 };
 
-const Terminal: Component = () => {
+type Props = {
+  onAdminLogin?: (token: string) => void;
+};
+
+const Terminal: Component<Props> = (props) => {
   const [input, setInput] = createSignal("");
   const [history, setHistory] = createSignal<CommandOutput[]>([]);
   const [historyIndex, setHistoryIndex] = createSignal(-1);
@@ -24,7 +28,8 @@ const Terminal: Component = () => {
   whoami     - Display system info
   clear      - Clear terminal output
   ls         - List available sections
-  logs       - Open live log viewer`,
+  logs       - Open live log viewer
+  sudo       - Authenticate as admin`,
 
     whoami: `Parth Sharma (aka pipboi / darth)
 Software Engineer @ General Motors
@@ -46,12 +51,43 @@ drwxr-xr-x  logs/`,
     contact: "Navigating to Contact section...",
   };
 
+  const handleSudo = async (password: string) => {
+    if (!password) {
+      setHistory([...history(), { command: "sudo", output: "Usage: sudo <password>" }]);
+      setInput("");
+      return;
+    }
+    try {
+      const res = await fetch("/api/admin/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+      });
+      const data = await res.json();
+      if (res.ok && data.token) {
+        props.onAdminLogin?.(data.token);
+        setHistory([...history(), { command: "sudo ***", output: "Access granted. Admin panel opened." }]);
+      } else {
+        setHistory([...history(), { command: "sudo ***", output: `Access denied: ${data.error ?? "invalid password"}` }]);
+      }
+    } catch {
+      setHistory([...history(), { command: "sudo ***", output: "Error: could not reach server" }]);
+    }
+    setInput("");
+  };
+
   const handleCommand = (cmd: string) => {
     const trimmedCmd = cmd.trim().toLowerCase();
 
     if (trimmedCmd === "clear") {
       setHistory([]);
       telemetry.trackCommand("clear");
+      return;
+    }
+
+    if (trimmedCmd.startsWith("sudo ") || trimmedCmd === "sudo") {
+      const password = cmd.trim().slice(5); // everything after "sudo "
+      handleSudo(password);
       return;
     }
 
