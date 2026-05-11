@@ -1,10 +1,24 @@
 import { createSignal, onMount, Show, For } from "solid-js";
 
+type FieldDiff = {
+  field: string;
+  old: unknown;
+  new: unknown;
+};
+
 type USCISStatus = {
   raw: Record<string, unknown> | null;
   checked_at: string;
   error?: string;
   changed?: boolean;
+  diff?: FieldDiff[];
+  auth_expired?: boolean;
+};
+
+const formatVal = (v: unknown): string => {
+  if (v === null || v === undefined) return "∅";
+  if (typeof v === "string") return v;
+  return JSON.stringify(v);
 };
 
 type Props = {
@@ -126,9 +140,33 @@ const USCISAdmin = (props: Props) => {
                   {s().changed && <span class="text-yellow-400">⚡ Changed since last poll</span>}
                 </div>
 
+                <Show when={s().auth_expired}>
+                  <div class="border border-red-500 bg-red-500/10 text-red-300 text-xs p-2">
+                    Credentials expired — re-paste your Cookie below. A push notification was sent.
+                  </div>
+                </Show>
+
                 <Show when={s().error}>
                   <div class="text-red-400 text-sm">
                     Error: {s().error}
+                  </div>
+                </Show>
+
+                <Show when={(s().diff?.length ?? 0) > 0}>
+                  <div class="border border-yellow-500/40 bg-yellow-500/5 p-3">
+                    <div class="text-yellow-400 text-xs mb-2">Changes since last poll:</div>
+                    <div class="space-y-1">
+                      <For each={s().diff}>
+                        {(d) => (
+                          <div class="flex flex-wrap gap-2 text-xs items-baseline">
+                            <span class="text-blue-400 w-48 shrink-0">{d.field}:</span>
+                            <span class="text-red-400 line-through break-all">{formatVal(d.old)}</span>
+                            <span class="text-gray-500">→</span>
+                            <span class="text-[#5bff4d] break-all">{formatVal(d.new)}</span>
+                          </div>
+                        )}
+                      </For>
+                    </div>
                   </div>
                 </Show>
 
