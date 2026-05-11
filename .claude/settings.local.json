@@ -1,7 +1,13 @@
 {
   "permissions": {
     "allow": [
-      "Bash(go build *)"
+      "Bash(go build *)",
+      "Bash(dpkg --print-architecture)",
+      "Bash(systemctl is-active *)",
+      "Bash(sudo -n true)",
+      "Bash(curl -sS -o /dev/null -w 'frontend\\(:8080/\\) %{http_code}\\\\n' http://localhost:8080/)",
+      "Bash(curl -sS -o /dev/null -w 'backend\\(:8080/api/health\\) %{http_code}\\\\n' http://localhost:8080/api/health)",
+      "Bash(npx tsc *)"
     ]
   }
 }
