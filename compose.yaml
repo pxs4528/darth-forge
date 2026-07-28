@@ -11,11 +11,11 @@
       expose:
         - "8080"
       restart: unless-stopped
-      # healthcheck:
-      #   test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/api/health"]
-      #   interval: 30s
-      #   timeout: 10s
-      #   retries: 3
+      healthcheck:
+        test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/api/health"]
+        interval: 30s
+        timeout: 10s
+        retries: 3
 
     frontend:
       build:

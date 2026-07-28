@@ -5,16 +5,23 @@ This directory contains the CI/CD pipeline for auto-deploying your webapp to the
 ## How it works
 
 1. You push code to GitHub (main branch)
-2. GitHub Actions workflow triggers
-3. GitHub sends a webhook to your Raspberry Pi
+2. GitHub Actions runs tests, then **builds multi-arch images and pushes them
+   to GHCR** (`.github/workflows/deploy.yml`) — the Pi never builds anything
+3. GitHub Actions sends a webhook to your Raspberry Pi
 4. Webhook listener receives the event
-5. Deployment script pulls latest code and rebuilds containers
+5. `deploy.sh` pulls the prebuilt images and recreates containers
 6. Your webapp is automatically updated!
+
+One-time on the Pi if the GHCR packages are private (or make them public in
+GitHub → Packages → package settings):
+```bash
+echo <PAT-with-read:packages> | docker login ghcr.io -u pxs4528 --password-stdin
+```
 
 ## Files
 
 - `webhook-listener.py` - Python HTTP server that listens for GitHub webhooks
-- `deploy.sh` - Deployment script that pulls code and rebuilds containers
+- `deploy.sh` - Pull-only deployment script (images come prebuilt from GHCR)
 - `webhook.service` - Systemd service file for the webhook listener
 - `setup.sh` - Setup script to configure everything
 - `webhook.log` - Webhook listener logs
