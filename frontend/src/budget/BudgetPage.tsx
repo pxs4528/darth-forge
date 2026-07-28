@@ -7,6 +7,7 @@ import { buildCsv, downloadCsv } from "./export";
 import { money, monthLabel, moneyShort, parseCents } from "./format";
 import { createBudgetStore } from "./store";
 import Tracker from "./Tracker";
+import Transfers from "./Transfers";
 import TxList from "./TxList";
 
 // /budget — full-page personal budgeting tool, gated on the site's existing
@@ -25,7 +26,7 @@ const BudgetPage: Component = () => {
     if (!s || !m) return;
     const labelOf = (key: string) =>
       store.catalog()?.categories.find((c) => c.key === key)?.label ?? key;
-    downloadCsv(`budget-${s.month}.csv`, buildCsv(s, m, labelOf));
+    downloadCsv(`budget-${s.month}.csv`, buildCsv(s, m, labelOf, store.accountName));
     store.flash(`Exported budget-${s.month}.csv`);
   };
 
@@ -118,6 +119,7 @@ const BudgetPage: Component = () => {
             <Dashboard store={store} />
             <EntryForm store={store} registerFocus={registerFocus} />
             <TxList store={store} />
+            <Transfers store={store} />
             <Charts store={store} />
           </div>
           <Tracker store={store} />

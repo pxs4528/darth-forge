@@ -24,6 +24,7 @@ const EntryForm: Component<Props> = (props) => {
   const [desc, setDesc] = createSignal("");
   const [amount, setAmount] = createSignal("");
   const [category, setCategory] = createSignal("");
+  const [account, setAccount] = createSignal(0);
   const [categoryTouched, setCategoryTouched] = createSignal(false);
   const [error, setError] = createSignal("");
   const [busy, setBusy] = createSignal(false);
@@ -94,8 +95,9 @@ const EntryForm: Component<Props> = (props) => {
         description: desc().trim(),
         amount_cents: cents,
         category: category(),
+        account_id: account(),
       });
-      // Date + category stick for rapid statement entry; text fields clear.
+      // Date + category + account stick for rapid statement entry; text fields clear.
       setDesc("");
       setAmount("");
       setSuggestions([]);
@@ -160,7 +162,7 @@ const EntryForm: Component<Props> = (props) => {
         <span class="text-[11px] text-gray-500">Enter to add · date &amp; category stick</span>
       </div>
 
-      <div class="grid grid-cols-2 sm:grid-cols-[8.5rem_1fr_7rem_12rem_auto] gap-2 items-start">
+      <div class="grid grid-cols-2 sm:grid-cols-[8.5rem_1fr_6.5rem_11rem_8rem_auto] gap-2 items-start">
         <input
           type="date"
           value={date()}
@@ -241,6 +243,18 @@ const EntryForm: Component<Props> = (props) => {
                 {GROUP_META[c.group]?.label ?? c.group} · {c.label}
               </option>
             )}
+          </For>
+        </select>
+
+        <select
+          value={String(account())}
+          onChange={(e) => setAccount(Number(e.currentTarget.value))}
+          onKeyDown={onFieldKey}
+          class={inputCls + " w-full"}
+          aria-label="Account">
+          <option value="0">No account</option>
+          <For each={store.activeAccounts()}>
+            {(a) => <option value={String(a.id)}>{a.name}</option>}
           </For>
         </select>
 

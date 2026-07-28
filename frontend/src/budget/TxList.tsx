@@ -28,6 +28,7 @@ const TxList: Component<Props> = (props) => {
   const [eDesc, setEDesc] = createSignal("");
   const [eAmount, setEAmount] = createSignal("");
   const [eCategory, setECategory] = createSignal("");
+  const [eAccount, setEAccount] = createSignal(0);
   const [eError, setEError] = createSignal("");
 
   let listRef: HTMLDivElement | undefined;
@@ -51,6 +52,7 @@ const TxList: Component<Props> = (props) => {
     setEDesc(tx.description);
     setEAmount((tx.amount_cents / 100).toFixed(2));
     setECategory(tx.category);
+    setEAccount(tx.account_id);
     setEError("");
   };
 
@@ -73,6 +75,7 @@ const TxList: Component<Props> = (props) => {
         description: eDesc().trim(),
         amount_cents: cents,
         category: eCategory(),
+        account_id: eAccount(),
       });
       cancelEdit();
     } catch (e) {
@@ -157,7 +160,7 @@ const TxList: Component<Props> = (props) => {
                 when={editingId() !== tx.id}
                 fallback={
                   <div class="px-4 py-2 border-t border-[#21262d] bg-[#161b22]">
-                    <div class="grid grid-cols-2 sm:grid-cols-[8.5rem_1fr_6.5rem_11rem_auto] gap-2 items-center">
+                    <div class="grid grid-cols-2 sm:grid-cols-[8.5rem_1fr_6rem_8rem_10rem_auto] gap-2 items-center">
                       <input
                         type="date"
                         value={eDate()}
@@ -189,6 +192,16 @@ const TxList: Component<Props> = (props) => {
                         class={inputCls + " text-right tabular-nums"}
                         aria-label="Amount"
                       />
+                      <select
+                        value={String(eAccount())}
+                        onChange={(e) => setEAccount(Number(e.currentTarget.value))}
+                        class={inputCls}
+                        aria-label="Account">
+                        <option value="0">No account</option>
+                        <For each={store.activeAccounts()}>
+                          {(a) => <option value={String(a.id)}>{a.name}</option>}
+                        </For>
+                      </select>
                       <select
                         value={eCategory()}
                         onChange={(e) => setECategory(e.currentTarget.value)}
@@ -232,6 +245,11 @@ const TxList: Component<Props> = (props) => {
                       style={{ background: groupColor(tx.category) }}
                     />
                     {catLabel(tx.category)}
+                    <Show when={tx.account_id > 0}>
+                      <span class="text-gray-600 truncate">
+                        · {store.accountName(tx.account_id)}
+                      </span>
+                    </Show>
                   </span>
                   <span
                     class={

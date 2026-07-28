@@ -78,6 +78,8 @@ func main() {
 	http.HandleFunc("/api/admin/budget/networth", handlers.AdminOnly(budgetHandler.HandleNetWorth))
 	http.HandleFunc("/api/admin/budget/transactions", handlers.AdminOnly(budgetHandler.HandleTransactions))
 	http.HandleFunc("/api/admin/budget/history", handlers.AdminOnly(budgetHandler.HandleHistory))
+	http.HandleFunc("/api/admin/budget/accounts", handlers.AdminOnly(budgetHandler.HandleAccounts))
+	http.HandleFunc("/api/admin/budget/transfers", handlers.AdminOnly(budgetHandler.HandleTransfers))
 	http.HandleFunc("/api/admin/budget/suggest", handlers.AdminOnly(budgetHandler.HandleSuggest))
 
 	log.Info("server", "Server starting on :8080", nil)

@@ -28,6 +28,37 @@ type Transaction struct {
 	Description string `json:"description"`
 	AmountCents int64  `json:"amount_cents"`
 	Category    string `json:"category"`
+	AccountID   int64  `json:"account_id"` // 0 = unassigned
+}
+
+// Account is a place money lives or is owed: checking, credit card, HYSA, …
+type Account struct {
+	ID       int64  `json:"id"`
+	Name     string `json:"name"`
+	Kind     string `json:"kind"` // checking | savings | credit | investment | other
+	Sort     int64  `json:"sort"`
+	Archived bool   `json:"archived"`
+}
+
+// ValidAccountKind reports whether k is a known account kind.
+func ValidAccountKind(k string) bool {
+	switch k {
+	case "checking", "savings", "credit", "investment", "other":
+		return true
+	}
+	return false
+}
+
+// Transfer records money moving between two accounts (paying a credit card,
+// topping up savings). Deliberately excluded from spending/budget math.
+type Transfer struct {
+	ID          int64  `json:"id"`
+	Month       string `json:"month"`
+	Date        string `json:"date"`
+	FromAccount int64  `json:"from_account"`
+	ToAccount   int64  `json:"to_account"`
+	AmountCents int64  `json:"amount_cents"`
+	Note        string `json:"note"`
 }
 
 type NetWorth struct {
@@ -53,6 +84,8 @@ type MonthState struct {
 	Budgets        map[string]int64 `json:"budgets"`
 	Transactions   []Transaction    `json:"transactions"`
 	NetWorth       NetWorth         `json:"net_worth"`
+	Accounts       []Account        `json:"accounts"`
+	Transfers      []Transfer       `json:"transfers"`
 }
 
 // HistoryPoint is one month rolled up, for the trend charts.
@@ -137,7 +170,7 @@ func GetMonth(conn *sql.DB, month string) (*MonthState, error) {
 	}
 
 	txRows, err := conn.Query(
-		`SELECT id, month, date, description, amount_cents, category
+		`SELECT id, month, date, description, amount_cents, category, account_id
 		 FROM transactions WHERE month = ? ORDER BY date DESC, id DESC`,
 		month,
 	)
@@ -147,7 +180,7 @@ func GetMonth(conn *sql.DB, month string) (*MonthState, error) {
 	defer txRows.Close()
 	for txRows.Next() {
 		var t Transaction
-		if err := txRows.Scan(&t.ID, &t.Month, &t.Date, &t.Description, &t.AmountCents, &t.Category); err != nil {
+		if err := txRows.Scan(&t.ID, &t.Month, &t.Date, &t.Description, &t.AmountCents, &t.Category, &t.AccountID); err != nil {
 			return nil, err
 		}
 		state.Transactions = append(state.Transactions, t)
@@ -162,7 +195,163 @@ func GetMonth(conn *sql.DB, month string) (*MonthState, error) {
 	}
 	state.NetWorth = nw
 
+	accounts, err := ListAccounts(conn)
+	if err != nil {
+		return nil, err
+	}
+	state.Accounts = accounts
+
+	transfers, err := listTransfers(conn, month)
+	if err != nil {
+		return nil, err
+	}
+	state.Transfers = transfers
+
 	return state, nil
+}
+
+// ── accounts ─────────────────────────────────────────────────────────────────
+
+// ListAccounts returns every account, active first, in sort order.
+func ListAccounts(conn *sql.DB) ([]Account, error) {
+	rows, err := conn.Query(
+		`SELECT id, name, kind, sort, archived FROM accounts ORDER BY archived, sort, id`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("load accounts: %w", err)
+	}
+	defer rows.Close()
+
+	out := []Account{}
+	for rows.Next() {
+		var a Account
+		var archived int64
+		if err := rows.Scan(&a.ID, &a.Name, &a.Kind, &a.Sort, &archived); err != nil {
+			return nil, err
+		}
+		a.Archived = archived == 1
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+// AccountExists reports whether an account id is present (0 = unassigned is
+// always acceptable for transactions, never for transfers).
+func AccountExists(conn *sql.DB, id int64) (bool, error) {
+	var n int64
+	if err := conn.QueryRow(`SELECT COUNT(*) FROM accounts WHERE id = ?`, id).Scan(&n); err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+func CreateAccount(conn *sql.DB, a Account) (*Account, error) {
+	res, err := conn.Exec(
+		`INSERT INTO accounts (name, kind, sort) VALUES (?, ?, ?)`,
+		a.Name, a.Kind, a.Sort,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("insert account: %w", err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return nil, err
+	}
+	a.ID = id
+	return &a, nil
+}
+
+// UpdateAccount renames/reclassifies/archives an account. Accounts are never
+// deleted so old transactions and transfers keep their references.
+func UpdateAccount(conn *sql.DB, a Account) error {
+	archived := 0
+	if a.Archived {
+		archived = 1
+	}
+	res, err := conn.Exec(
+		`UPDATE accounts SET name = ?, kind = ?, sort = ?, archived = ? WHERE id = ?`,
+		a.Name, a.Kind, a.Sort, archived, a.ID,
+	)
+	if err != nil {
+		return fmt.Errorf("update account: %w", err)
+	}
+	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		return fmt.Errorf("account %d not found", a.ID)
+	}
+	return nil
+}
+
+// ── transfers ────────────────────────────────────────────────────────────────
+
+func listTransfers(conn *sql.DB, month string) ([]Transfer, error) {
+	rows, err := conn.Query(
+		`SELECT id, month, date, from_account, to_account, amount_cents, note
+		 FROM transfers WHERE month = ? ORDER BY date DESC, id DESC`,
+		month,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("load transfers: %w", err)
+	}
+	defer rows.Close()
+
+	out := []Transfer{}
+	for rows.Next() {
+		var t Transfer
+		if err := rows.Scan(&t.ID, &t.Month, &t.Date, &t.FromAccount, &t.ToAccount, &t.AmountCents, &t.Note); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+func CreateTransfer(conn *sql.DB, t Transfer) (*Transfer, error) {
+	if err := ensureMonth(conn, t.Month); err != nil {
+		return nil, err
+	}
+	res, err := conn.Exec(
+		`INSERT INTO transfers (month, date, from_account, to_account, amount_cents, note)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
+		t.Month, t.Date, t.FromAccount, t.ToAccount, t.AmountCents, t.Note,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("insert transfer: %w", err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return nil, err
+	}
+	t.ID = id
+	return &t, nil
+}
+
+func UpdateTransfer(conn *sql.DB, t Transfer) error {
+	if err := ensureMonth(conn, t.Month); err != nil {
+		return err
+	}
+	res, err := conn.Exec(
+		`UPDATE transfers SET month = ?, date = ?, from_account = ?, to_account = ?, amount_cents = ?, note = ?
+		 WHERE id = ?`,
+		t.Month, t.Date, t.FromAccount, t.ToAccount, t.AmountCents, t.Note, t.ID,
+	)
+	if err != nil {
+		return fmt.Errorf("update transfer: %w", err)
+	}
+	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		return fmt.Errorf("transfer %d not found", t.ID)
+	}
+	return nil
+}
+
+func DeleteTransfer(conn *sql.DB, id int64) error {
+	res, err := conn.Exec(`DELETE FROM transfers WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("delete transfer: %w", err)
+	}
+	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		return fmt.Errorf("transfer %d not found", id)
+	}
+	return nil
 }
 
 func getNetWorth(conn *sql.DB, month string) (NetWorth, error) {
@@ -346,9 +535,9 @@ func CreateTransaction(conn *sql.DB, t Transaction) (*Transaction, error) {
 		return nil, err
 	}
 	res, err := conn.Exec(
-		`INSERT INTO transactions (month, date, description, amount_cents, category)
-		 VALUES (?, ?, ?, ?, ?)`,
-		t.Month, t.Date, t.Description, t.AmountCents, t.Category,
+		`INSERT INTO transactions (month, date, description, amount_cents, category, account_id)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
+		t.Month, t.Date, t.Description, t.AmountCents, t.Category, t.AccountID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("insert transaction: %w", err)
@@ -368,9 +557,9 @@ func UpdateTransaction(conn *sql.DB, t Transaction) error {
 		return err
 	}
 	res, err := conn.Exec(
-		`UPDATE transactions SET month = ?, date = ?, description = ?, amount_cents = ?, category = ?
+		`UPDATE transactions SET month = ?, date = ?, description = ?, amount_cents = ?, category = ?, account_id = ?
 		 WHERE id = ?`,
-		t.Month, t.Date, t.Description, t.AmountCents, t.Category, t.ID,
+		t.Month, t.Date, t.Description, t.AmountCents, t.Category, t.AccountID, t.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("update transaction: %w", err)

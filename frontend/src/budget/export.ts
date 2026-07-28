@@ -10,7 +10,8 @@ const usd = (cents: number): string => (cents / 100).toFixed(2);
 export const buildCsv = (
   state: MonthState,
   metrics: Metrics,
-  labelOf: (key: string) => string
+  labelOf: (key: string) => string,
+  accountName: (id: number) => string
 ): string => {
   const lines: string[] = [];
 
@@ -35,12 +36,27 @@ export const buildCsv = (
   }
   lines.push("");
 
-  lines.push("Date,Description,Amount,Category");
+  lines.push("Date,Description,Amount,Category,Account");
   // oldest first reads naturally in a spreadsheet
   for (const tx of [...state.transactions].reverse()) {
     lines.push(
-      `${tx.date},${esc(tx.description)},${usd(tx.amount_cents)},${esc(labelOf(tx.category))}`
+      `${tx.date},${esc(tx.description)},${usd(tx.amount_cents)},${esc(labelOf(tx.category))},${esc(
+        tx.account_id ? accountName(tx.account_id) : ""
+      )}`
     );
+  }
+
+  if (state.transfers.length > 0) {
+    lines.push("");
+    lines.push("Transfers");
+    lines.push("Date,From,To,Amount,Note");
+    for (const t of [...state.transfers].reverse()) {
+      lines.push(
+        `${t.date},${esc(accountName(t.from_account))},${esc(accountName(t.to_account))},${usd(
+          t.amount_cents
+        )},${esc(t.note)}`
+      );
+    }
   }
 
   return lines.join("\n") + "\n";
