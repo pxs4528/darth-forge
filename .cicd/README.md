@@ -28,6 +28,24 @@ echo <PAT-with-read:packages> | docker login ghcr.io -u pxs4528 --password-stdin
 - `deploy.log` - Deployment logs
 - `.webhook_secret` - Secret key for webhook authentication (auto-generated)
 
+## Migrating to a new host (another Pi, a cluster node, a cloud VM)
+
+Images on GHCR are multi-arch (amd64 + arm64 + armv7), so any Docker host can
+run them unchanged. On the new machine:
+
+1. Install Docker and `cloudflared`; point the Cloudflare Tunnel at the new
+   host (or move the tunnel credentials over)
+2. `git clone https://github.com/pxs4528/darth-forge && cd darth-forge`
+3. Copy over the two untracked files: `.env.prod` (or `.env.dev`) and
+   `compose.prod.yaml` (start from `compose.prod.yaml.example`)
+4. Run `.cicd/setup.sh` to install the webhook listener, and update the
+   `WEBHOOK_URL` GitHub secret to the new host
+5. If the repo lives somewhere other than `/home/darth/darth-forge`, set
+   `PROJECT_DIR=/new/path` in the webhook service env (deploy.sh reads it)
+6. `.cicd/deploy.sh` — done; pushes to main now deploy here
+
+Nothing is built on the host, so a Pi Zero or a 1-vCPU VM works equally well.
+
 ## Quick Start
 
 1. Run the setup script:
