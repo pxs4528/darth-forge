@@ -115,12 +115,15 @@ const Transfers: Component<Props> = (props) => {
   const [managing, setManaging] = createSignal(false);
   const [newName, setNewName] = createSignal("");
   const [newKind, setNewKind] = createSignal<AccountKind>("checking");
+  const [newBalance, setNewBalance] = createSignal("");
 
   const addAccount = async () => {
     if (!newName().trim()) return;
+    const cents = parseCents(newBalance()) ?? 0;
     try {
-      await store.createAccount(newName().trim(), newKind());
+      await store.createAccount(newName().trim(), newKind(), cents);
       setNewName("");
+      setNewBalance("");
     } catch (e) {
       store.flash(e instanceof Error ? e.message : "Failed to add account");
     }
@@ -132,6 +135,12 @@ const Transfers: Component<Props> = (props) => {
     } catch (e) {
       store.flash(e instanceof Error ? e.message : "Failed to save account");
     }
+  };
+
+  const saveStartingBalance = (account: Account, raw: string) => {
+    const cents = parseCents(raw);
+    if (cents === null || cents === account.starting_balance_cents) return;
+    saveAccount(account, { starting_balance_cents: cents });
   };
 
   return (
@@ -151,7 +160,7 @@ const Transfers: Component<Props> = (props) => {
           <For each={store.accounts()}>
             {(a) => (
               <div
-                class="grid grid-cols-[minmax(0,1fr)_7rem_5rem] gap-2 items-center"
+                class="grid grid-cols-2 sm:grid-cols-[minmax(0,1fr)_7rem_7rem_5rem] gap-2 items-center"
                 classList={{ "opacity-50": a.archived }}>
                 <input
                   type="text"
@@ -167,19 +176,29 @@ const Transfers: Component<Props> = (props) => {
                 <select
                   value={a.kind}
                   onChange={(e) => saveAccount(a, { kind: e.currentTarget.value as AccountKind })}
-                  class={inputCls}
+                  class={inputCls + " w-full min-w-0"}
                   aria-label="Account kind">
                   <For each={KINDS}>{(k) => <option value={k}>{k}</option>}</For>
                 </select>
+                <input
+                  type="text"
+                  inputmode="decimal"
+                  value={(a.starting_balance_cents / 100).toFixed(2)}
+                  onBlur={(e) => saveStartingBalance(a, e.currentTarget.value)}
+                  onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+                  title={`Starting balance as of ${a.starting_month}`}
+                  class={inputCls + " w-full min-w-0 text-right tabular-nums"}
+                  aria-label="Starting balance"
+                />
                 <button
                   onClick={() => saveAccount(a, { archived: !a.archived })}
-                  class="px-2 py-1 text-[11px] rounded border border-[#30363d] text-gray-300 hover:bg-[#21262d]">
+                  class="px-2 py-1 text-[11px] rounded border border-[#30363d] text-gray-300 hover:bg-[#21262d] col-span-2 sm:col-span-1">
                   {a.archived ? "restore" : "archive"}
                 </button>
               </div>
             )}
           </For>
-          <div class="grid grid-cols-[minmax(0,1fr)_7rem_5rem] gap-2 items-center pt-1 border-t border-[#21262d]">
+          <div class="grid grid-cols-2 sm:grid-cols-[minmax(0,1fr)_7rem_7rem_5rem] gap-2 items-center pt-1 border-t border-[#21262d]">
             <input
               type="text"
               value={newName()}
@@ -192,13 +211,23 @@ const Transfers: Component<Props> = (props) => {
             <select
               value={newKind()}
               onChange={(e) => setNewKind(e.currentTarget.value as AccountKind)}
-              class={inputCls}
+              class={inputCls + " w-full min-w-0"}
               aria-label="New account kind">
               <For each={KINDS}>{(k) => <option value={k}>{k}</option>}</For>
             </select>
+            <input
+              type="text"
+              inputmode="decimal"
+              value={newBalance()}
+              onInput={(e) => setNewBalance(e.currentTarget.value)}
+              onKeyDown={(e) => e.key === "Enter" && addAccount()}
+              placeholder="Start $0.00"
+              class={inputCls + " w-full min-w-0 text-right tabular-nums"}
+              aria-label="Starting balance"
+            />
             <button
               onClick={addAccount}
-              class="px-2 py-1 text-[11px] font-bold rounded bg-[#238636] text-white hover:bg-[#2ea043]">
+              class="px-2 py-1 text-[11px] font-bold rounded bg-[#238636] text-white hover:bg-[#2ea043] col-span-2 sm:col-span-1">
               add
             </button>
           </div>
@@ -211,6 +240,7 @@ const Transfers: Component<Props> = (props) => {
           <thead>
             <tr class="text-[11px] uppercase tracking-wider text-gray-500 text-right">
               <th class="text-left font-normal pb-1">Account</th>
+              <th class="font-normal pb-1">Balance</th>
               <th class="font-normal pb-1">Charged</th>
               <th class="font-normal pb-1">In</th>
               <th class="font-normal pb-1">Out</th>
@@ -223,6 +253,20 @@ const Transfers: Component<Props> = (props) => {
                   <td class="text-left py-1 text-gray-300">
                     {row.account.name}
                     <span class="text-gray-600 text-[11px]"> · {row.account.kind}</span>
+                  </td>
+                  <td
+                    class="font-bold"
+                    classList={{
+                      "text-[#f85149]":
+                        row.account.kind === "credit" && row.account.balance_cents > 0,
+                      "text-[#3fb950]":
+                        row.account.kind !== "credit" && row.account.balance_cents >= 0,
+                      "text-white": row.account.kind === "credit" && row.account.balance_cents <= 0,
+                    }}>
+                    {money(row.account.balance_cents)}
+                    <Show when={row.account.kind === "credit" && row.account.balance_cents > 0}>
+                      <span class="text-[10px] text-gray-500 font-normal"> owed</span>
+                    </Show>
                   </td>
                   <td class="text-white">{row.chargedCents ? money(row.chargedCents) : "—"}</td>
                   <td class="text-[#3fb950]">{row.inCents ? money(row.inCents) : "—"}</td>
@@ -242,7 +286,12 @@ const Transfers: Component<Props> = (props) => {
             never counts as spending — use for CC payments &amp; moving money
           </span>
         </div>
-        <div class="grid grid-cols-2 sm:grid-cols-[8.5rem_minmax(0,1fr)_minmax(0,1fr)_6.5rem_minmax(0,1fr)_auto] gap-2 items-start">
+        {/*
+          Two comfortable rows of 3, not 6 columns squeezed into one line —
+          a real desktop window (not just an ultrawide) has room for 3
+          fields per row without anything getting cramped or cut off.
+        */}
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 items-start">
           <input
             type="date"
             value={date()}
@@ -299,7 +348,7 @@ const Transfers: Component<Props> = (props) => {
           <button
             onClick={submit}
             disabled={busy()}
-            class="px-4 py-1.5 text-sm font-bold rounded bg-[#238636] text-white hover:bg-[#2ea043] disabled:opacity-50 col-span-2 sm:col-span-1">
+            class="px-4 py-1.5 text-sm font-bold rounded bg-[#238636] text-white hover:bg-[#2ea043] disabled:opacity-50 w-full sm:w-auto col-span-2 sm:col-span-1">
             {busy() ? "…" : "Move"}
           </button>
         </div>

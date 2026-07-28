@@ -36,6 +36,12 @@ export type Account = {
   kind: AccountKind;
   sort: number;
   archived: boolean;
+  starting_balance_cents: number;
+  starting_month: string; // "YYYY-MM" — anchors when the starting balance applied
+  /** Running balance as of the currently viewed month. Server-computed;
+   * present when loaded via month state, 0 for a just-created account
+   * until the next state refetch. Credit accounts: amount owed. */
+  balance_cents: number;
 };
 
 export type Transfer = {

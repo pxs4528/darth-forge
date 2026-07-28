@@ -33,11 +33,27 @@ type Transaction struct {
 
 // Account is a place money lives or is owed: checking, credit card, HYSA, …
 type Account struct {
-	ID       int64  `json:"id"`
-	Name     string `json:"name"`
-	Kind     string `json:"kind"` // checking | savings | credit | investment | other
-	Sort     int64  `json:"sort"`
-	Archived bool   `json:"archived"`
+	ID                   int64  `json:"id"`
+	Name                 string `json:"name"`
+	Kind                 string `json:"kind"` // checking | savings | credit | investment | other
+	Sort                 int64  `json:"sort"`
+	Archived             bool   `json:"archived"`
+	StartingBalanceCents int64  `json:"starting_balance_cents"`
+	// StartingMonth anchors when StartingBalanceCents applied ("YYYY-MM").
+	// Only transactions/transfers from this month onward feed the running
+	// balance, so re-baselining an account (e.g. correcting a typo) doesn't
+	// get contaminated by whatever was already logged before the snapshot.
+	StartingMonth string `json:"starting_month"`
+}
+
+// AccountBalance is an Account with its running balance computed as of a
+// given month (inclusive). Credit accounts track balance as "amount owed"
+// (a charge increases it, a payment — a transfer in — decreases it); every
+// other kind tracks balance as cash held (a charge decreases it, a transfer
+// in increases it, a transfer out decreases it).
+type AccountBalance struct {
+	Account
+	BalanceCents int64 `json:"balance_cents"`
 }
 
 // ValidAccountKind reports whether k is a known account kind.
@@ -84,7 +100,7 @@ type MonthState struct {
 	Budgets        map[string]int64 `json:"budgets"`
 	Transactions   []Transaction    `json:"transactions"`
 	NetWorth       NetWorth         `json:"net_worth"`
-	Accounts       []Account        `json:"accounts"`
+	Accounts       []AccountBalance `json:"accounts"`
 	Transfers      []Transfer       `json:"transfers"`
 }
 
@@ -195,7 +211,7 @@ func GetMonth(conn *sql.DB, month string) (*MonthState, error) {
 	}
 	state.NetWorth = nw
 
-	accounts, err := ListAccounts(conn)
+	accounts, err := AccountBalances(conn, month)
 	if err != nil {
 		return nil, err
 	}
@@ -215,7 +231,8 @@ func GetMonth(conn *sql.DB, month string) (*MonthState, error) {
 // ListAccounts returns every account, active first, in sort order.
 func ListAccounts(conn *sql.DB) ([]Account, error) {
 	rows, err := conn.Query(
-		`SELECT id, name, kind, sort, archived FROM accounts ORDER BY archived, sort, id`,
+		`SELECT id, name, kind, sort, archived, starting_balance_cents, starting_month
+		 FROM accounts ORDER BY archived, sort, id`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("load accounts: %w", err)
@@ -226,13 +243,92 @@ func ListAccounts(conn *sql.DB) ([]Account, error) {
 	for rows.Next() {
 		var a Account
 		var archived int64
-		if err := rows.Scan(&a.ID, &a.Name, &a.Kind, &a.Sort, &archived); err != nil {
+		if err := rows.Scan(&a.ID, &a.Name, &a.Kind, &a.Sort, &archived,
+			&a.StartingBalanceCents, &a.StartingMonth); err != nil {
 			return nil, err
 		}
 		a.Archived = archived == 1
 		out = append(out, a)
 	}
 	return out, rows.Err()
+}
+
+// AccountBalances returns every account with its running balance computed
+// through uptoMonth (inclusive). See AccountBalance's doc comment for the
+// credit-vs-asset sign convention.
+func AccountBalances(conn *sql.DB, uptoMonth string) ([]AccountBalance, error) {
+	accounts, err := ListAccounts(conn)
+	if err != nil {
+		return nil, err
+	}
+
+	// One aggregate query per source, joined to accounts so each account's
+	// own starting_month bounds its range — avoids an N+1 query per account.
+	txByAccount, err := sumByAccount(conn,
+		`SELECT t.account_id, SUM(t.amount_cents) FROM transactions t
+		 JOIN accounts a ON a.id = t.account_id
+		 WHERE t.month <= ? AND t.month >= a.starting_month
+		 GROUP BY t.account_id`, uptoMonth)
+	if err != nil {
+		return nil, fmt.Errorf("sum transactions by account: %w", err)
+	}
+
+	transfersIn, err := sumByAccount(conn,
+		`SELECT tr.to_account, SUM(tr.amount_cents) FROM transfers tr
+		 JOIN accounts a ON a.id = tr.to_account
+		 WHERE tr.month <= ? AND tr.month >= a.starting_month
+		 GROUP BY tr.to_account`, uptoMonth)
+	if err != nil {
+		return nil, fmt.Errorf("sum transfers in by account: %w", err)
+	}
+
+	transfersOut, err := sumByAccount(conn,
+		`SELECT tr.from_account, SUM(tr.amount_cents) FROM transfers tr
+		 JOIN accounts a ON a.id = tr.from_account
+		 WHERE tr.month <= ? AND tr.month >= a.starting_month
+		 GROUP BY tr.from_account`, uptoMonth)
+	if err != nil {
+		return nil, fmt.Errorf("sum transfers out by account: %w", err)
+	}
+
+	out := make([]AccountBalance, len(accounts))
+	for i, a := range accounts {
+		balance := a.StartingBalanceCents
+		if uptoMonth >= a.StartingMonth {
+			balance = computeBalance(a.Kind, a.StartingBalanceCents,
+				txByAccount[a.ID], transfersIn[a.ID], transfersOut[a.ID])
+		}
+		out[i] = AccountBalance{Account: a, BalanceCents: balance}
+	}
+	return out, nil
+}
+
+// computeBalance applies the credit-vs-asset sign convention documented on
+// AccountBalance. Split out from AccountBalances so the sign logic — the
+// part most likely to have a bug — is unit-testable without a live DB.
+func computeBalance(kind string, startingCents, chargedCents, transfersInCents, transfersOutCents int64) int64 {
+	if kind == "credit" {
+		return startingCents + chargedCents - transfersInCents + transfersOutCents
+	}
+	return startingCents - chargedCents + transfersInCents - transfersOutCents
+}
+
+func sumByAccount(conn *sql.DB, query string, uptoMonth string) (map[int64]int64, error) {
+	rows, err := conn.Query(query, uptoMonth)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	sums := map[int64]int64{}
+	for rows.Next() {
+		var id, sum int64
+		if err := rows.Scan(&id, &sum); err != nil {
+			return nil, err
+		}
+		sums[id] = sum
+	}
+	return sums, rows.Err()
 }
 
 // AccountExists reports whether an account id is present (0 = unassigned is
@@ -247,8 +343,9 @@ func AccountExists(conn *sql.DB, id int64) (bool, error) {
 
 func CreateAccount(conn *sql.DB, a Account) (*Account, error) {
 	res, err := conn.Exec(
-		`INSERT INTO accounts (name, kind, sort) VALUES (?, ?, ?)`,
-		a.Name, a.Kind, a.Sort,
+		`INSERT INTO accounts (name, kind, sort, starting_balance_cents, starting_month)
+		 VALUES (?, ?, ?, ?, ?)`,
+		a.Name, a.Kind, a.Sort, a.StartingBalanceCents, a.StartingMonth,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("insert account: %w", err)
@@ -261,16 +358,19 @@ func CreateAccount(conn *sql.DB, a Account) (*Account, error) {
 	return &a, nil
 }
 
-// UpdateAccount renames/reclassifies/archives an account. Accounts are never
-// deleted so old transactions and transfers keep their references.
+// UpdateAccount renames/reclassifies/archives/re-baselines an account.
+// Accounts are never deleted so old transactions and transfers keep their
+// references.
 func UpdateAccount(conn *sql.DB, a Account) error {
 	archived := 0
 	if a.Archived {
 		archived = 1
 	}
 	res, err := conn.Exec(
-		`UPDATE accounts SET name = ?, kind = ?, sort = ?, archived = ? WHERE id = ?`,
-		a.Name, a.Kind, a.Sort, archived, a.ID,
+		`UPDATE accounts SET name = ?, kind = ?, sort = ?, archived = ?,
+		                     starting_balance_cents = ?, starting_month = ?
+		 WHERE id = ?`,
+		a.Name, a.Kind, a.Sort, archived, a.StartingBalanceCents, a.StartingMonth, a.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("update account: %w", err)

@@ -175,7 +175,7 @@ export function createBudgetStore() {
     (t) => guard(() => api.categories(t))
   );
 
-  const [state, { mutate: mutateState }] = createResource<
+  const [state, { mutate: mutateState, refetch: refetchState }] = createResource<
     MonthState | undefined,
     { t: string; m: string }
   >(
@@ -196,6 +196,18 @@ export function createBudgetStore() {
   );
 
   const bumpHistory = () => setHistVersion((v) => v + 1);
+
+  /**
+   * Account balances are computed server-side across a account's whole
+   * history, not just what's loaded for the current month — so after any
+   * transaction/transfer/account edit that could shift a balance, pull a
+   * fresh month state in the background to reconcile it. Local optimistic
+   * patches already keep the visible list snappy; this just corrects the
+   * numbers a moment later.
+   */
+  const refreshBalances = () => {
+    Promise.resolve(refetchState()).catch(() => undefined);
+  };
 
   // category key → group, and the set of net-worth-building categories
   const groupOf = createMemo<Record<string, string>>(() => {
@@ -249,6 +261,7 @@ export function createBudgetStore() {
       flash(`Added to ${created.month} (different month)`);
     }
     bumpHistory();
+    if (created.account_id) refreshBalances();
     return created;
   };
 
@@ -264,12 +277,14 @@ export function createBudgetStore() {
     });
     if (saved.month !== month()) flash(`Moved to ${saved.month}`);
     bumpHistory();
+    refreshBalances(); // old and/or new account may have changed
   };
 
   const deleteTransaction = async (id: number) => {
     await guard(() => api.deleteTransaction(token(), id));
     mutateState((s) => (s ? { ...s, transactions: s.transactions.filter((x) => x.id !== id) } : s));
     bumpHistory();
+    refreshBalances();
   };
 
   // ── month settings ──
@@ -333,12 +348,21 @@ export function createBudgetStore() {
   const accountName = (id: number): string =>
     id === 0 ? "—" : (accounts().find((a) => a.id === id)?.name ?? "—");
 
-  const createAccount = async (name: string, kind: Account["kind"]) => {
+  const createAccount = async (name: string, kind: Account["kind"], startingBalanceCents = 0) => {
     const created = await guard(() =>
-      api.createAccount(token(), { name, kind, sort: accounts().length, archived: false })
+      api.createAccount(token(), {
+        name,
+        kind,
+        sort: accounts().length,
+        archived: false,
+        starting_balance_cents: startingBalanceCents,
+        starting_month: month(),
+        balance_cents: startingBalanceCents,
+      })
     );
     mutateState((s) => (s ? { ...s, accounts: [...s.accounts, created] } : s));
     flash("Account added");
+    refreshBalances();
   };
 
   const updateAccount = async (account: Account) => {
@@ -347,6 +371,7 @@ export function createBudgetStore() {
       s ? { ...s, accounts: s.accounts.map((a) => (a.id === saved.id ? saved : a)) } : s
     );
     flash("Account saved");
+    refreshBalances();
   };
 
   // ── transfers ──
@@ -367,6 +392,7 @@ export function createBudgetStore() {
     } else {
       flash(`Transfer added to ${created.month} (different month)`);
     }
+    refreshBalances();
     return created;
   };
 
@@ -380,11 +406,13 @@ export function createBudgetStore() {
         transfers: saved.month === s.month ? insertTransferSorted(rest, saved) : rest,
       };
     });
+    refreshBalances();
   };
 
   const deleteTransfer = async (id: number) => {
     await guard(() => api.deleteTransfer(token(), id));
     mutateState((s) => (s ? { ...s, transfers: s.transfers.filter((x) => x.id !== id) } : s));
+    refreshBalances();
   };
 
   // ── autosuggest ──
