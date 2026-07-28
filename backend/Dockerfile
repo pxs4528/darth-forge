@@ -1,10 +1,15 @@
-# Stage 1: Build the Go binary
-FROM docker.io/library/golang:1.21-alpine AS builder
+# Stage 1: Build the Go binary.
+# --platform=$BUILDPLATFORM keeps this stage native on the CI runner (amd64);
+# Go cross-compiles to the target arch via GOOS/GOARCH — no QEMU, fast builds.
+FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.21-alpine AS builder
+
+ARG TARGETOS
+ARG TARGETARCH
 
 WORKDIR /app
 
-# Copy go.mod (and go.sum if it exists) for dependency caching
-COPY go.mod ./
+# Copy go.mod/go.sum for dependency caching
+COPY go.mod go.sum* ./
 
 # Download dependencies (cached if go.mod hasn't changed)
 RUN go mod download
@@ -12,16 +17,16 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build static binary
-# CGO_ENABLED=0: Disable C dependencies for fully static binary
-# GOOS=linux: Target Linux OS
-# -ldflags="-w -s": Strip debug info to reduce binary size
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o api ./cmd/api
+# Build static binary for the target platform
+# CGO_ENABLED=0: fully static binary (also required by the libsql HTTP driver path)
+# -ldflags="-w -s": strip debug info to reduce binary size
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-arm64} \
+    go build -ldflags="-w -s" -o api ./cmd/api
 
 # Stage 2: Run the binary in minimal image
 FROM docker.io/library/alpine:latest
 
-# Add ca-certificates for HTTPS requests (if your API makes external calls)
+# Add ca-certificates for HTTPS requests (Turso, USCIS, ntfy)
 RUN apk --no-cache add ca-certificates
 
 WORKDIR /app
@@ -29,8 +34,6 @@ WORKDIR /app
 # Copy only the compiled binary from builder
 COPY --from=builder /app/api .
 
-# Expose the port your API listens on
 EXPOSE 8080
 
-# Run the binary
 CMD ["./api"]

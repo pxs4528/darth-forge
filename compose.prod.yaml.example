@@ -1,24 +1,26 @@
 # Docker Compose Production Configuration
-# Copy this file to compose.prod.yaml and update with your production settings
+# Copy this file to compose.prod.yaml (and keep it in sync when this example changes)
 #
-# Usage: docker compose -f compose.yaml -f compose.prod.yaml up -d
+# Prod pulls prebuilt multi-arch images from GHCR — the Pi never builds.
+# Images are published by .github/workflows/deploy.yml on every push to main.
+# If the GHCR packages are private, log in once on the Pi:
+#   echo <PAT-with-read:packages> | docker login ghcr.io -u pxs4528 --password-stdin
+#
+# Usage: docker compose -f compose.yaml -f compose.prod.yaml up -d --no-build
 
 version: '3.8'
 
 services:
   frontend:
+    image: ghcr.io/pxs4528/darth-forge-frontend:latest
     environment:
       - DOMAIN=${DOMAIN}
-    # Add production-specific frontend configuration
-    # - SSL/TLS settings
-    # - CDN integration
-    # - Performance optimizations
 
   backend:
+    image: ghcr.io/pxs4528/darth-forge-backend:latest
     environment:
       - ENV=production
-    # Add production-specific backend configuration
-    # - Database connections
-    # - API keys (use secrets!)
-    # - Logging configuration
     restart: unless-stopped
+
+  infosec:
+    image: ghcr.io/pxs4528/darth-forge-infosec:latest

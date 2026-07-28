@@ -1,14 +1,17 @@
 #!/bin/bash
 set -euo pipefail
 
-# Deployment script for darth-forge.
+# Deployment script for darth-forge — pull-only.
 #
-# Workarounds for current Pi instability (2026-05-11):
-#   - buildx crashes with "invalid runtime symbol table" → DOCKER_BUILDKIT=0
-#   - npm install segfaults inside node:20-slim → build frontend on host
-#   - duplicate webhook triggers → flock -n drops the second one
-#   - containers are only recreated AFTER builds succeed, so a build failure
-#     no longer takes the site down
+# All images are built by GitHub Actions and pushed to GHCR
+# (.github/workflows/deploy.yml). This script only:
+#   1. syncs the repo (compose files, this script)
+#   2. pulls the new images
+#   3. recreates containers
+#   4. health-checks and prunes old image layers
+# The Pi never compiles or builds anything.
+#
+# flock -n drops duplicate webhook triggers.
 
 PROJECT_DIR="/home/darth/darth-forge"
 LOG_FILE="$PROJECT_DIR/.cicd/deploy.log"
@@ -29,60 +32,37 @@ log "========================================"
 
 cd "$PROJECT_DIR"
 
-# ── 1/5  Pull latest code ───────────────────────────────────────────────────
-log "[1/5] Pulling latest code from GitHub..."
+# ── 1/4  Sync repo (compose files, Caddyfile, this script) ──────────────────
+log "[1/4] Syncing repo..."
 git fetch origin main 2>&1 | tee -a "$LOG_FILE"
 git reset --hard origin/main 2>&1 | tee -a "$LOG_FILE"
 
-# ── 2/5  Build frontend dist on host (npm install segfaults inside docker) ──
-log "[2/5] Building frontend on host..."
-npm install --no-audit --no-fund 2>&1 | tee -a "$LOG_FILE"
-npm run build 2>&1 | tee -a "$LOG_FILE"
-if [ ! -f frontend/dist/index.html ]; then
-    log "✗ frontend/dist/index.html missing after build — aborting (containers untouched)"
+# ── 2/4  Pull new images from GHCR ──────────────────────────────────────────
+log "[2/4] Pulling images..."
+if ! docker compose -f compose.yaml -f compose.prod.yaml pull 2>&1 | tee -a "$LOG_FILE"; then
+    log "✗ Image pull failed — containers untouched."
+    log "  (If GHCR packages are private: docker login ghcr.io first.)"
     exit 1
 fi
 
-# ── 3/5  Build images with legacy builder ───────────────────────────────────
-log "[3/5] Building backend + infosec images (legacy builder)..."
-DOCKER_BUILDKIT=0 docker compose -f compose.yaml -f compose.prod.yaml build backend infosec 2>&1 | tee -a "$LOG_FILE"
-
-log "[3/5] Baking frontend dist into caddy image..."
-FRONTEND_CTX=$(mktemp -d)
-trap 'rm -rf "$FRONTEND_CTX"' EXIT
-cp -r frontend/dist "$FRONTEND_CTX/dist"
-cp frontend/Caddyfile "$FRONTEND_CTX/Caddyfile"
-cat > "$FRONTEND_CTX/Dockerfile" <<'DOCKERFILE'
-FROM docker.io/library/caddy:2
-COPY dist /srv
-COPY Caddyfile /etc/caddy/Caddyfile
-EXPOSE 80
-DOCKERFILE
-DOCKER_BUILDKIT=0 docker build -t darth-forge-frontend:latest "$FRONTEND_CTX" 2>&1 | tee -a "$LOG_FILE"
-
-# ── 4/5  Recreate containers — only now that all builds succeeded ───────────
-log "[4/5] Recreating containers..."
+# ── 3/4  Recreate containers with the new images ────────────────────────────
+log "[3/4] Recreating containers..."
 docker compose -f compose.yaml -f compose.prod.yaml up -d --no-build 2>&1 | tee -a "$LOG_FILE"
 
-# ── 5/5  Health-check with retry ────────────────────────────────────────────
-log "[5/5] Verifying deployment..."
-backend_ok=0
-frontend_ok=0
+# ── 4/4  Health-check, then prune superseded layers ─────────────────────────
+log "[4/4] Verifying deployment..."
+healthy=0
 for i in $(seq 1 30); do
-    if [ "$backend_ok" = 0 ] && curl -fsS http://localhost:8080/api/health >/dev/null; then
-        log "✓ Backend healthy (after $((i*2))s)"
-        backend_ok=1
+    if curl -fsS http://localhost:8080/api/health >/dev/null 2>&1; then
+        log "✓ Site healthy (after $((i*2))s)"
+        healthy=1
+        break
     fi
-    if [ "$frontend_ok" = 0 ] && curl -fsS http://localhost:8080 >/dev/null; then
-        log "✓ Frontend healthy (after $((i*2))s)"
-        frontend_ok=1
-    fi
-    if [ "$backend_ok" = 1 ] && [ "$frontend_ok" = 1 ]; then break; fi
     sleep 2
 done
+[ "$healthy" = 1 ] || log "✗ Health check failed after 60s — check: docker compose logs"
 
-[ "$backend_ok"  = 1 ] || log "✗ Backend health check failed after 60s"
-[ "$frontend_ok" = 1 ] || log "✗ Frontend health check failed after 60s"
+docker image prune -f 2>&1 | tee -a "$LOG_FILE"
 
 log "Deployment completed at $(date)"
 log "========================================"
