@@ -1,0 +1,79 @@
+# Budget tool (`/budget`)
+
+Private budgeting app at `https://<domain>/budget`, gated behind the same
+`ADMIN_SECRET` as the terminal's `sudo` command. Data lives in
+[Turso](https://turso.tech) (SQLite-over-HTTP), so laptop and phone see the
+same numbers and the Pi keeps no local state.
+
+## First-time setup
+
+```bash
+# 1. Turso CLI + database (free tier: 5 GB, 500M row reads/mo)
+curl -sSfL https://get.tur.so/install.sh | bash
+turso auth signup
+turso db create darth-budget
+turso db show darth-budget --url        # → TURSO_DATABASE_URL
+turso db tokens create darth-budget     # → TURSO_AUTH_TOKEN
+
+# 2. Add both values to .env.prod (and .env.dev for local dev)
+
+# 3. Pull the Go driver (updates go.mod/go.sum)
+cd backend && go get github.com/tursodatabase/libsql-client-go/libsql && go mod tidy
+```
+
+Schema migrates automatically on boot (`backend/internal/db/db.go`). Without
+the env vars the site runs normally and budget routes return 503.
+
+## Architecture
+
+- `backend/internal/db/` — libSQL connection, schema, queries. Money is
+  integer cents everywhere.
+- `backend/internal/handlers/budget.go` — REST API under
+  `/api/admin/budget/*`, all wrapped in the existing `AdminOnly` middleware.
+- `frontend/src/budget/` — the SPA page. `store.ts` holds state/actions;
+  `api.ts` is the typed client. Served at `/budget` by the tiny router in
+  `frontend/src/lib/router.ts` (Caddy's SPA fallback covers deep links).
+
+Monthly seeding: opening a new month copies the previous month's category
+budgets and net-worth snapshot, and decrements `months_remaining`
+automatically.
+
+## Auth
+
+Logging in exchanges the admin password for a **random session token**
+(`backend/internal/handlers/auth.go`) — the browser stores only the token,
+never the secret. Sessions live in backend memory with a 30-day sliding
+expiry, so every deploy/restart signs you out. Failed logins are limited to
+5/minute.
+
+### Changing the admin password
+
+The password is the `ADMIN_SECRET` env var:
+
+```bash
+# on the Pi
+nano /home/darth/darth-forge/.env.prod        # change ADMIN_SECRET=...
+docker compose -f compose.yaml -f compose.prod.yaml up -d backend
+```
+
+Recreating the backend picks up the new value and (because sessions are
+in-memory) instantly signs out every device. Locally it's
+`$env:ADMIN_SECRET = '...'` before `npm run dev`.
+
+## Keyboard shortcuts
+
+`?` help · `n` new transaction · `[`/`]` prev/next month · `j`/`k` select ·
+`e` edit · `x x` delete · `t` tracker · `Esc` close/cancel
+
+## Useful queries
+
+```bash
+turso db shell darth-budget
+```
+
+```sql
+-- restaurant spend by month, all time
+SELECT month, SUM(amount_cents)/100.0 AS dollars
+FROM transactions WHERE category = 'restaurants'
+GROUP BY month ORDER BY month;
+```
