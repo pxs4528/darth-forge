@@ -142,6 +142,15 @@ func migrate(conn *sql.DB) error {
 	if err := ensureColumn(conn, "transactions", "account_id", "INTEGER NOT NULL DEFAULT 0"); err != nil {
 		return err
 	}
+	// starting_month defaults to '1970-01' (always in range) so existing
+	// seeded accounts keep their full transaction history in the balance
+	// calc instead of silently zeroing out.
+	if err := ensureColumn(conn, "accounts", "starting_balance_cents", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := ensureColumn(conn, "accounts", "starting_month", "TEXT NOT NULL DEFAULT '1970-01'"); err != nil {
+		return err
+	}
 
 	return seedAccounts(conn)
 }

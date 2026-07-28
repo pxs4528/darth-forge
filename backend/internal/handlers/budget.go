@@ -319,6 +319,13 @@ func (h *BudgetHandler) HandleAccounts(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusBadRequest, "kind must be checking, savings, credit, investment or other")
 			return
 		}
+		if a.StartingMonth == "" {
+			a.StartingMonth = time.Now().UTC().Format("2006-01")
+		}
+		if !db.ValidMonth(a.StartingMonth) {
+			writeErr(w, http.StatusBadRequest, "starting_month must be YYYY-MM")
+			return
+		}
 
 		if r.Method == http.MethodPost {
 			created, err := db.CreateAccount(h.conn, a)
