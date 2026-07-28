@@ -1,5 +1,6 @@
 import type { Component } from "solid-js";
 import { createSignal, For, onMount } from "solid-js";
+import { navigate } from "../lib/router";
 import { telemetry } from "../services/telemetry";
 
 type CommandOutput = {
@@ -29,6 +30,7 @@ const Terminal: Component<Props> = (props) => {
   clear      - Clear terminal output
   ls         - List available sections
   logs       - Open live log viewer
+  budget     - Open budgeting tool
   sudo       - Authenticate as admin`,
 
     whoami: `Parth Sharma (aka pipboi / darth)
@@ -66,9 +68,15 @@ drwxr-xr-x  logs/`,
       const data = await res.json();
       if (res.ok && data.token) {
         props.onAdminLogin?.(data.token);
-        setHistory([...history(), { command: "sudo ***", output: "Access granted. Admin panel opened." }]);
+        setHistory([
+          ...history(),
+          { command: "sudo ***", output: "Access granted. Admin panel opened." },
+        ]);
       } else {
-        setHistory([...history(), { command: "sudo ***", output: `Access denied: ${data.error ?? "invalid password"}` }]);
+        setHistory([
+          ...history(),
+          { command: "sudo ***", output: `Access denied: ${data.error ?? "invalid password"}` },
+        ]);
       }
     } catch {
       setHistory([...history(), { command: "sudo ***", output: "Error: could not reach server" }]);
@@ -91,6 +99,14 @@ drwxr-xr-x  logs/`,
       return;
     }
 
+    if (trimmedCmd === "budget") {
+      setHistory([...history(), { command: cmd, output: "Opening budget tool..." }]);
+      setInput("");
+      telemetry.trackCommand("budget");
+      navigate("/budget");
+      return;
+    }
+
     if (trimmedCmd === "logs") {
       const element = document.getElementById("logs");
       if (element) {
@@ -106,7 +122,6 @@ drwxr-xr-x  logs/`,
     }
 
     let output = "";
-    let commandFound = true;
 
     if (trimmedCmd === "") {
       return;
@@ -114,7 +129,11 @@ drwxr-xr-x  logs/`,
       output = commands[trimmedCmd];
 
       // Navigate to sections
-      if (["about", "experience", "projects", "skills", "contact", "home", "logs"].includes(trimmedCmd)) {
+      if (
+        ["about", "experience", "projects", "skills", "contact", "home", "logs"].includes(
+          trimmedCmd
+        )
+      ) {
         const element = document.getElementById(trimmedCmd);
         if (element) {
           setTimeout(() => {
@@ -129,7 +148,6 @@ drwxr-xr-x  logs/`,
     } else {
       output = `Command not found: ${trimmedCmd}
 Type 'help' for available commands.`;
-      commandFound = false;
       telemetry.trackCommand(trimmedCmd, false);
     }
 
@@ -150,15 +168,16 @@ Type 'help' for available commands.`;
       handleCommand(input());
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      const allCommands = history().map(h => h.command);
+      const allCommands = history().map((h) => h.command);
       if (allCommands.length > 0) {
-        const newIndex = historyIndex() === -1 ? allCommands.length - 1 : Math.max(0, historyIndex() - 1);
+        const newIndex =
+          historyIndex() === -1 ? allCommands.length - 1 : Math.max(0, historyIndex() - 1);
         setHistoryIndex(newIndex);
         setInput(allCommands[newIndex] || "");
       }
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
-      const allCommands = history().map(h => h.command);
+      const allCommands = history().map((h) => h.command);
       if (historyIndex() !== -1) {
         const newIndex = Math.min(allCommands.length - 1, historyIndex() + 1);
         setHistoryIndex(newIndex);
@@ -167,7 +186,7 @@ Type 'help' for available commands.`;
     } else if (e.key === "Tab") {
       e.preventDefault();
       const currentInput = input().toLowerCase();
-      const matches = Object.keys(commands).filter(cmd => cmd.startsWith(currentInput));
+      const matches = Object.keys(commands).filter((cmd) => cmd.startsWith(currentInput));
       if (matches.length === 1) {
         setInput(matches[0]);
       }
@@ -176,11 +195,13 @@ Type 'help' for available commands.`;
 
   onMount(() => {
     // Show welcome message
-    setHistory([{
-      command: "",
-      output: `Welcome to Parth's Terminal Portfolio!
-Type 'help' to see available commands.`
-    }]);
+    setHistory([
+      {
+        command: "",
+        output: `Welcome to Parth's Terminal Portfolio!
+Type 'help' to see available commands.`,
+      },
+    ]);
   });
 
   return (

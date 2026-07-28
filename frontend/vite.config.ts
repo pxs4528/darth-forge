@@ -12,6 +12,10 @@ export default defineConfig({
   ],
   server: {
     port: 3000,
+    // Route API calls to the Go backend in dev (prod uses Caddy for this).
+    proxy: {
+      '/api': 'http://localhost:8080',
+    },
   },
   build: {
     target: 'esnext',
