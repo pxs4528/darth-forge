@@ -450,6 +450,27 @@ func (h *BudgetHandler) HandleHistory(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{"history": points})
 }
 
+// GET /api/admin/budget/dump — full SQL dump of the budget database.
+// Routed behind AdminOrBackupToken (session or dedicated backup token).
+func (h *BudgetHandler) HandleDump(w http.ResponseWriter, r *http.Request) {
+	if !h.ready(w) {
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	filename := "budget-" + time.Now().UTC().Format("2006-01-02") + ".sql"
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
+
+	if err := db.Dump(h.conn, w); err != nil {
+		// headers are already sent; log and truncate rather than half-lie
+		h.logger.Error("budget", "dump failed", map[string]interface{}{"error": err.Error()})
+	}
+}
+
 // GET /api/admin/budget/suggest?q=heb — past descriptions and their usual category.
 func (h *BudgetHandler) HandleSuggest(w http.ResponseWriter, r *http.Request) {
 	if !h.ready(w) {

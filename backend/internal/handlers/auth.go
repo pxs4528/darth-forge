@@ -101,6 +101,27 @@ func AdminOnly(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// AdminOrBackupToken allows either a live admin session or the dedicated
+// BACKUP_TOKEN env value (X-Backup-Token header). The backup token exists so
+// scheduled pulls from other machines never store the admin secret — worst
+// case a leaked token can read the budget dump, not change anything.
+func AdminOrBackupToken(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if sessions.valid(r.Header.Get("X-Admin-Token")) {
+			next(w, r)
+			return
+		}
+		backup := os.Getenv("BACKUP_TOKEN")
+		supplied := r.Header.Get("X-Backup-Token")
+		if backup != "" && supplied != "" &&
+			subtle.ConstantTimeCompare([]byte(backup), []byte(supplied)) == 1 {
+			next(w, r)
+			return
+		}
+		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+	}
+}
+
 // HandleAdminAuth — POST /api/admin/auth: password in, session token out.
 func HandleAdminAuth(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {

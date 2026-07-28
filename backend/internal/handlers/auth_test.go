@@ -121,6 +121,45 @@ func TestSessionExpiry(t *testing.T) {
 	}
 }
 
+func TestAdminOrBackupToken(t *testing.T) {
+	resetSessions()
+	t.Setenv("ADMIN_SECRET", "correct-horse")
+	t.Setenv("BACKUP_TOKEN", "backup-abc")
+
+	protected := AdminOrBackupToken(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	check := func(header, value string, want int) {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodGet, "/dump", nil)
+		if header != "" {
+			req.Header.Set(header, value)
+		}
+		rec := httptest.NewRecorder()
+		protected(rec, req)
+		if rec.Code != want {
+			t.Fatalf("%s=%q: want %d, got %d", header, value, want, rec.Code)
+		}
+	}
+
+	check("", "", http.StatusUnauthorized)
+	check("X-Backup-Token", "backup-abc", http.StatusOK)
+	check("X-Backup-Token", "wrong", http.StatusUnauthorized)
+	// backup token is not an admin session token and vice versa
+	check("X-Admin-Token", "backup-abc", http.StatusUnauthorized)
+
+	// a real admin session also passes
+	rec := postAuth(t, "correct-horse")
+	var body map[string]string
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+	check("X-Admin-Token", body["token"], http.StatusOK)
+
+	// unset backup token disables that path entirely
+	t.Setenv("BACKUP_TOKEN", "")
+	check("X-Backup-Token", "", http.StatusUnauthorized)
+}
+
 func TestAuthRateLimit(t *testing.T) {
 	resetSessions()
 	t.Setenv("ADMIN_SECRET", "correct-horse")

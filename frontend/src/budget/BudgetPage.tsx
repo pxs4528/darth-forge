@@ -3,6 +3,7 @@ import { navigate } from "../lib/router";
 import Charts from "./Charts";
 import Dashboard from "./Dashboard";
 import EntryForm from "./EntryForm";
+import { api } from "./api";
 import { buildCsv, downloadCsv } from "./export";
 import { money, monthLabel, moneyShort, parseCents } from "./format";
 import { createBudgetStore } from "./store";
@@ -28,6 +29,17 @@ const BudgetPage: Component = () => {
       store.catalog()?.categories.find((c) => c.key === key)?.label ?? key;
     downloadCsv(`budget-${s.month}.csv`, buildCsv(s, m, labelOf, store.accountName));
     store.flash(`Exported budget-${s.month}.csv`);
+  };
+
+  const backupDb = async () => {
+    try {
+      const sql = await api.dump(store.token());
+      const day = new Date().toISOString().slice(0, 10);
+      downloadCsv(`budget-${day}.sql`, sql);
+      store.flash("Backup downloaded");
+    } catch (e) {
+      store.flash(e instanceof Error ? e.message : "Backup failed");
+    }
   };
 
   const onKey = (e: KeyboardEvent) => {
@@ -81,7 +93,12 @@ const BudgetPage: Component = () => {
   return (
     <div class="min-h-screen bg-black text-white" style={{ "color-scheme": "dark" }}>
       <Show when={store.token()} fallback={<AuthGate store={store} />}>
-        <Header store={store} onExport={exportMonth} onHelp={() => setShowHelp(true)} />
+        <Header
+          store={store}
+          onExport={exportMonth}
+          onBackup={backupDb}
+          onHelp={() => setShowHelp(true)}
+        />
 
         {/* Surface API failures (e.g. Turso not configured yet → 503) */}
         <Show when={store.apiError()}>
@@ -237,6 +254,7 @@ const AuthGate: Component<{ store: ReturnType<typeof createBudgetStore> }> = (pr
 const Header: Component<{
   store: ReturnType<typeof createBudgetStore>;
   onExport: () => void;
+  onBackup: () => void;
   onHelp: () => void;
 }> = (props) => {
   const { store } = props;
@@ -337,6 +355,9 @@ const Header: Component<{
 
           <button onClick={props.onExport} class={btn}>
             export csv
+          </button>
+          <button onClick={props.onBackup} class={btn} title="Download full SQL backup">
+            backup
           </button>
           <button onClick={props.onHelp} class={btn} aria-label="Keyboard shortcuts">
             ?

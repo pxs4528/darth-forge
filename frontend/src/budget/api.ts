@@ -232,4 +232,16 @@ export const api = {
       token,
       `/api/admin/budget/suggest?q=${encodeURIComponent(q)}`
     ),
+
+  /** Full SQL dump as text (restore: pipe into `turso db shell`). */
+  dump: async (token: string): Promise<string> => {
+    const res = await fetch("/api/admin/budget/dump", {
+      headers: { "X-Admin-Token": token },
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new ApiError(res.status, (data as { error?: string }).error ?? res.statusText);
+    }
+    return res.text();
+  },
 };
