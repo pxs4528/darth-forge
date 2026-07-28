@@ -5,7 +5,6 @@ import (
 	"backend/internal/services"
 	"encoding/json"
 	"net/http"
-	"os"
 )
 
 type USCISHandler struct {
@@ -15,18 +14,6 @@ type USCISHandler struct {
 
 func NewUSCISHandler(log *logger.Logger, poller *services.USCISPoller) *USCISHandler {
 	return &USCISHandler{logger: log, poller: poller}
-}
-
-// AdminOnly middleware — checks X-Admin-Token header against ADMIN_SECRET env var.
-func AdminOnly(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		secret := os.Getenv("ADMIN_SECRET")
-		if secret == "" || r.Header.Get("X-Admin-Token") != secret {
-			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
-			return
-		}
-		next(w, r)
-	}
 }
 
 // GET /api/admin/uscis/status
@@ -92,32 +79,4 @@ func (h *USCISHandler) HandleTestNotify(w http.ResponseWriter, r *http.Request) 
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"message": "test notification sent"})
-}
-
-// POST /api/admin/auth — validates admin password and echoes it back as the token
-// (token IS the secret — client stores it and sends it as X-Admin-Token)
-func HandleAdminAuth(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	var body struct {
-		Password string `json:"password"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Password == "" {
-		http.Error(w, `{"error":"invalid request"}`, http.StatusBadRequest)
-		return
-	}
-
-	secret := os.Getenv("ADMIN_SECRET")
-	if secret == "" || body.Password != secret {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]string{"error": "invalid password"})
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"token": secret})
 }
