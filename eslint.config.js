@@ -20,27 +20,15 @@ export default [
           jsx: true,
         },
       },
-      globals: {
-        // Browser globals
-        window: 'readonly',
-        document: 'readonly',
-        console: 'readonly',
-        setTimeout: 'readonly',
-        clearTimeout: 'readonly',
-        setInterval: 'readonly',
-        clearInterval: 'readonly',
-        fetch: 'readonly',
-        HTMLElement: 'readonly',
-        HTMLInputElement: 'readonly',
-        KeyboardEvent: 'readonly',
-        Event: 'readonly',
-      },
     },
     rules: {
       'no-unused-vars': 'off',
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
       'no-console': 'off',
-      'no-undef': 'error',
+      // tsc already errors on undefined names with full DOM lib awareness;
+      // no-undef on TS files just means hand-maintaining a globals list.
+      // https://typescript-eslint.io/troubleshooting/faqs/eslint/#i-get-errors-from-the-no-undef-rule-about-global-variables-not-being-defined
+      'no-undef': 'off',
     },
   },
 ];

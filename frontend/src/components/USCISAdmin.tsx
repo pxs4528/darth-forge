@@ -32,7 +32,7 @@ const USCISAdmin = (props: Props) => {
   const [message, setMessage] = createSignal("");
   const [cookie, setCookie] = createSignal("");
   const [bearer, setBearer] = createSignal("");
-  const [ntfyTopic, setNtfyTopic] = createSignal(import.meta.env.VITE_NTFY_TOPIC ?? "");
+  const [ntfyTopic] = createSignal(import.meta.env.VITE_NTFY_TOPIC ?? "");
 
   const headers = () => ({ "Content-Type": "application/json", "X-Admin-Token": props.token });
 
@@ -43,7 +43,7 @@ const USCISAdmin = (props: Props) => {
       const data = await res.json();
       setStatus(data);
       setMessage("");
-    } catch (e) {
+    } catch {
       setMessage("Failed to fetch status");
     } finally {
       setLoading(false);
@@ -84,7 +84,10 @@ const USCISAdmin = (props: Props) => {
 
   const sendTestNotify = async () => {
     try {
-      const res = await fetch("/api/admin/uscis/test-notify", { method: "POST", headers: headers() });
+      const res = await fetch("/api/admin/uscis/test-notify", {
+        method: "POST",
+        headers: headers(),
+      });
       const data = await res.json();
       setMessage(data.message ?? data.error ?? "Done");
     } catch {
@@ -108,7 +111,9 @@ const USCISAdmin = (props: Props) => {
             <h2 class="text-white font-bold text-lg">USCIS Admin Panel</h2>
             <p class="text-gray-400 text-xs mt-1">STEM OPT · IOE9856492653</p>
           </div>
-          <button onClick={props.onClose} class="text-gray-400 hover:text-white text-xl">✕</button>
+          <button onClick={props.onClose} class="text-gray-400 hover:text-white text-xl">
+            ✕
+          </button>
         </div>
 
         {/* Status */}
@@ -119,14 +124,12 @@ const USCISAdmin = (props: Props) => {
               <button
                 onClick={triggerCheck}
                 disabled={loading()}
-                class="px-3 py-1 text-xs border border-[#5bff4d] text-[#5bff4d] hover:bg-[#5bff4d]/10 disabled:opacity-50"
-              >
+                class="px-3 py-1 text-xs border border-[#5bff4d] text-[#5bff4d] hover:bg-[#5bff4d]/10 disabled:opacity-50">
                 {loading() ? "Checking…" : "Check Now"}
               </button>
               <button
                 onClick={fetchStatus}
-                class="px-3 py-1 text-xs border border-white text-white hover:bg-white/10"
-              >
+                class="px-3 py-1 text-xs border border-white text-white hover:bg-white/10">
                 Refresh
               </button>
             </div>
@@ -136,7 +139,9 @@ const USCISAdmin = (props: Props) => {
             {(s) => (
               <div class="bg-black border border-gray-700 p-4 space-y-3 font-mono text-sm">
                 <div class="flex gap-4 text-xs text-gray-400">
-                  <span>Last checked: <span class="text-white">{fmtDate(s().checked_at)}</span></span>
+                  <span>
+                    Last checked: <span class="text-white">{fmtDate(s().checked_at)}</span>
+                  </span>
                   {s().changed && <span class="text-yellow-400">⚡ Changed since last poll</span>}
                 </div>
 
@@ -147,9 +152,7 @@ const USCISAdmin = (props: Props) => {
                 </Show>
 
                 <Show when={s().error}>
-                  <div class="text-red-400 text-sm">
-                    Error: {s().error}
-                  </div>
+                  <div class="text-red-400 text-sm">Error: {s().error}</div>
                 </Show>
 
                 <Show when={(s().diff?.length ?? 0) > 0}>
@@ -160,7 +163,9 @@ const USCISAdmin = (props: Props) => {
                         {(d) => (
                           <div class="flex flex-wrap gap-2 text-xs items-baseline">
                             <span class="text-blue-400 w-48 shrink-0">{d.field}:</span>
-                            <span class="text-red-400 line-through break-all">{formatVal(d.old)}</span>
+                            <span class="text-red-400 line-through break-all">
+                              {formatVal(d.old)}
+                            </span>
                             <span class="text-gray-500">→</span>
                             <span class="text-[#5bff4d] break-all">{formatVal(d.new)}</span>
                           </div>
@@ -193,8 +198,9 @@ const USCISAdmin = (props: Props) => {
         <section>
           <h3 class="text-yellow-400 font-mono text-sm mb-3">Update USCIS Credentials</h3>
           <p class="text-gray-400 text-xs mb-3">
-            After logging into <span class="text-white">my.uscis.gov</span>, open DevTools → Network,
-            find the case API request, and copy either the <span class="text-white">Cookie</span> or{" "}
+            After logging into <span class="text-white">my.uscis.gov</span>, open DevTools →
+            Network, find the case API request, and copy either the{" "}
+            <span class="text-white">Cookie</span> or{" "}
             <span class="text-white">Authorization: Bearer</span> header value.
           </p>
           <div class="space-y-2">
@@ -220,8 +226,7 @@ const USCISAdmin = (props: Props) => {
             </div>
             <button
               onClick={updateCredentials}
-              class="px-4 py-2 text-xs bg-yellow-500 text-black font-bold hover:bg-yellow-400"
-            >
+              class="px-4 py-2 text-xs bg-yellow-500 text-black font-bold hover:bg-yellow-400">
               Update Credentials
             </button>
           </div>
@@ -231,14 +236,18 @@ const USCISAdmin = (props: Props) => {
         <section>
           <h3 class="text-blue-400 font-mono text-sm mb-3">Push Notifications (ntfy.sh)</h3>
           <p class="text-gray-400 text-xs mb-3">
-            Install the <span class="text-white">ntfy</span> app on your phone and subscribe to the topic
-            configured in <span class="text-white">NTFY_TOPIC</span>.
-            {ntfyTopic() && <> Current topic: <span class="text-[#5bff4d]">{ntfyTopic()}</span></>}
+            Install the <span class="text-white">ntfy</span> app on your phone and subscribe to the
+            topic configured in <span class="text-white">NTFY_TOPIC</span>.
+            {ntfyTopic() && (
+              <>
+                {" "}
+                Current topic: <span class="text-[#5bff4d]">{ntfyTopic()}</span>
+              </>
+            )}
           </p>
           <button
             onClick={sendTestNotify}
-            class="px-4 py-2 text-xs border border-blue-400 text-blue-400 hover:bg-blue-400/10"
-          >
+            class="px-4 py-2 text-xs border border-blue-400 text-blue-400 hover:bg-blue-400/10">
             Send Test Notification
           </button>
         </section>

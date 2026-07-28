@@ -40,8 +40,8 @@ func (h *LogsHandler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	client := &websocket.Client{
-		conn,
-		make(chan []byte, 256),
+		Conn: conn,
+		Send: make(chan []byte, 256),
 	}
 
 	h.hub.Register(client)
