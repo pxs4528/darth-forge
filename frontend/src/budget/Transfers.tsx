@@ -151,7 +151,7 @@ const Transfers: Component<Props> = (props) => {
           <For each={store.accounts()}>
             {(a) => (
               <div
-                class="grid grid-cols-[1fr_7rem_5rem] gap-2 items-center"
+                class="grid grid-cols-[minmax(0,1fr)_7rem_5rem] gap-2 items-center"
                 classList={{ "opacity-50": a.archived }}>
                 <input
                   type="text"
@@ -161,7 +161,7 @@ const Transfers: Component<Props> = (props) => {
                     if (name && name !== a.name) saveAccount(a, { name });
                   }}
                   onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
-                  class={inputCls}
+                  class={inputCls + " w-full min-w-0"}
                   aria-label="Account name"
                 />
                 <select
@@ -179,14 +179,14 @@ const Transfers: Component<Props> = (props) => {
               </div>
             )}
           </For>
-          <div class="grid grid-cols-[1fr_7rem_5rem] gap-2 items-center pt-1 border-t border-[#21262d]">
+          <div class="grid grid-cols-[minmax(0,1fr)_7rem_5rem] gap-2 items-center pt-1 border-t border-[#21262d]">
             <input
               type="text"
               value={newName()}
               onInput={(e) => setNewName(e.currentTarget.value)}
               onKeyDown={(e) => e.key === "Enter" && addAccount()}
               placeholder="New account name"
-              class={inputCls}
+              class={inputCls + " w-full min-w-0"}
               aria-label="New account name"
             />
             <select
@@ -242,20 +242,20 @@ const Transfers: Component<Props> = (props) => {
             never counts as spending — use for CC payments &amp; moving money
           </span>
         </div>
-        <div class="grid grid-cols-2 sm:grid-cols-[8.5rem_1fr_1fr_6.5rem_1fr_auto] gap-2 items-start">
+        <div class="grid grid-cols-2 sm:grid-cols-[8.5rem_minmax(0,1fr)_minmax(0,1fr)_6.5rem_minmax(0,1fr)_auto] gap-2 items-start">
           <input
             type="date"
             value={date()}
             onInput={(e) => setDate(e.currentTarget.value)}
             onKeyDown={onKey}
-            class={inputCls + " tabular-nums"}
+            class={inputCls + " w-full min-w-0 tabular-nums"}
             aria-label="Date"
           />
           <select
             value={String(from())}
             onChange={(e) => setFrom(Number(e.currentTarget.value))}
             onKeyDown={onKey}
-            class={inputCls}
+            class={inputCls + " w-full min-w-0 truncate"}
             aria-label="From account">
             <option value="0" disabled>
               From…
@@ -268,7 +268,7 @@ const Transfers: Component<Props> = (props) => {
             value={String(to())}
             onChange={(e) => setTo(Number(e.currentTarget.value))}
             onKeyDown={onKey}
-            class={inputCls}
+            class={inputCls + " w-full min-w-0 truncate"}
             aria-label="To account">
             <option value="0" disabled>
               To…
@@ -284,7 +284,7 @@ const Transfers: Component<Props> = (props) => {
             onInput={(e) => setAmount(e.currentTarget.value)}
             onKeyDown={onKey}
             placeholder="$0.00"
-            class={inputCls + " text-right tabular-nums"}
+            class={inputCls + " w-full min-w-0 text-right tabular-nums"}
             aria-label="Amount"
           />
           <input
@@ -293,7 +293,7 @@ const Transfers: Component<Props> = (props) => {
             onInput={(e) => setNote(e.currentTarget.value)}
             onKeyDown={onKey}
             placeholder="Note (optional)"
-            class={inputCls}
+            class={inputCls + " w-full min-w-0"}
             aria-label="Note"
           />
           <button
