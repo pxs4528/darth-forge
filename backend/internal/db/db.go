@@ -102,12 +102,105 @@ var schema = []string{
 		goal_cents          INTEGER NOT NULL DEFAULT 10000000,
 		updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
 	)`,
+
+	// Money lives in accounts (checking, credit cards, HYSA, …). Transactions
+	// carry the account they hit; transfers record money moving between
+	// accounts (e.g. paying Discover from checking) without counting as
+	// spending.
+	`CREATE TABLE IF NOT EXISTS accounts (
+		id       INTEGER PRIMARY KEY AUTOINCREMENT,
+		name     TEXT NOT NULL UNIQUE,
+		kind     TEXT NOT NULL DEFAULT 'checking',
+		sort     INTEGER NOT NULL DEFAULT 0,
+		archived INTEGER NOT NULL DEFAULT 0
+	)`,
+
+	`CREATE TABLE IF NOT EXISTS transfers (
+		id           INTEGER PRIMARY KEY AUTOINCREMENT,
+		month        TEXT NOT NULL,
+		date         TEXT NOT NULL,
+		from_account INTEGER NOT NULL,
+		to_account   INTEGER NOT NULL,
+		amount_cents INTEGER NOT NULL,
+		note         TEXT NOT NULL DEFAULT '',
+		created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+	)`,
+
+	`CREATE INDEX IF NOT EXISTS idx_transfers_month ON transfers (month, date DESC, id DESC)`,
 }
 
 func migrate(conn *sql.DB) error {
 	for i, stmt := range schema {
 		if _, err := conn.Exec(stmt); err != nil {
 			return fmt.Errorf("statement %d: %w", i, err)
+		}
+	}
+
+	// Column additions to existing tables (CREATE TABLE IF NOT EXISTS won't
+	// touch them). Each is checked against PRAGMA table_info first so the
+	// migration stays idempotent.
+	if err := ensureColumn(conn, "transactions", "account_id", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+
+	return seedAccounts(conn)
+}
+
+// ensureColumn adds a column if the table doesn't have it yet.
+func ensureColumn(conn *sql.DB, table, column, decl string) error {
+	rows, err := conn.Query(`SELECT name FROM pragma_table_info(?)`, table)
+	if err != nil {
+		return fmt.Errorf("table_info %s: %w", table, err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return err
+		}
+		if name == column {
+			return nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	if _, err := conn.Exec(
+		fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", table, column, decl),
+	); err != nil {
+		return fmt.Errorf("add %s.%s: %w", table, column, err)
+	}
+	return nil
+}
+
+// seedAccounts inserts a starter set the first time the table is empty.
+func seedAccounts(conn *sql.DB) error {
+	var count int64
+	if err := conn.QueryRow(`SELECT COUNT(*) FROM accounts`).Scan(&count); err != nil {
+		return fmt.Errorf("count accounts: %w", err)
+	}
+	if count > 0 {
+		return nil
+	}
+
+	seed := []struct {
+		name string
+		kind string
+	}{
+		{"Checking", "checking"},
+		{"Discover Credit", "credit"},
+		{"Chase Credit", "credit"},
+		{"HYSA", "savings"},
+		{"Brokerage", "investment"},
+	}
+	for i, a := range seed {
+		if _, err := conn.Exec(
+			`INSERT INTO accounts (name, kind, sort) VALUES (?, ?, ?) ON CONFLICT (name) DO NOTHING`,
+			a.name, a.kind, i,
+		); err != nil {
+			return fmt.Errorf("seed account %s: %w", a.name, err)
 		}
 	}
 	return nil

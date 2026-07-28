@@ -25,6 +25,27 @@ export type Transaction = {
   description: string;
   amount_cents: number;
   category: string;
+  account_id: number; // 0 = unassigned
+};
+
+export type AccountKind = "checking" | "savings" | "credit" | "investment" | "other";
+
+export type Account = {
+  id: number;
+  name: string;
+  kind: AccountKind;
+  sort: number;
+  archived: boolean;
+};
+
+export type Transfer = {
+  id: number;
+  month: string;
+  date: string;
+  from_account: number;
+  to_account: number;
+  amount_cents: number;
+  note: string;
 };
 
 export type NetWorth = {
@@ -45,6 +66,8 @@ export type MonthState = {
   budgets: Record<string, number>;
   transactions: Transaction[];
   net_worth: NetWorth;
+  accounts: Account[];
+  transfers: Transfer[];
 };
 
 export type HistoryPoint = {
@@ -174,6 +197,35 @@ export const api = {
 
   history: (token: string, limit = 24) =>
     request<{ history: HistoryPoint[] }>(token, `/api/admin/budget/history?limit=${limit}`),
+
+  createAccount: (token: string, account: Omit<Account, "id">) =>
+    request<Account>(token, "/api/admin/budget/accounts", {
+      method: "POST",
+      body: JSON.stringify(account),
+    }),
+
+  updateAccount: (token: string, account: Account) =>
+    request<Account>(token, "/api/admin/budget/accounts", {
+      method: "PUT",
+      body: JSON.stringify(account),
+    }),
+
+  createTransfer: (token: string, transfer: Omit<Transfer, "id">) =>
+    request<Transfer>(token, "/api/admin/budget/transfers", {
+      method: "POST",
+      body: JSON.stringify(transfer),
+    }),
+
+  updateTransfer: (token: string, transfer: Transfer) =>
+    request<Transfer>(token, "/api/admin/budget/transfers", {
+      method: "PUT",
+      body: JSON.stringify(transfer),
+    }),
+
+  deleteTransfer: (token: string, id: number) =>
+    request<{ message: string }>(token, `/api/admin/budget/transfers?id=${id}`, {
+      method: "DELETE",
+    }),
 
   suggest: (token: string, q: string) =>
     request<{ suggestions: Suggestion[] }>(

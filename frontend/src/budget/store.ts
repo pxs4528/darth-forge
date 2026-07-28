@@ -6,6 +6,8 @@ import {
   clearToken,
   loadToken,
   saveToken,
+  type Account,
+  type Transfer,
   type CategoryCatalog,
   type HistoryPoint,
   type MonthState,
@@ -323,6 +325,68 @@ export function createBudgetStore() {
     flash("Net worth saved");
   };
 
+  // ── accounts ──
+  const accounts = createMemo<Account[]>(() => state()?.accounts ?? []);
+  const activeAccounts = createMemo<Account[]>(() => accounts().filter((a) => !a.archived));
+
+  /** id → display name ("—" for unassigned/unknown). */
+  const accountName = (id: number): string =>
+    id === 0 ? "—" : (accounts().find((a) => a.id === id)?.name ?? "—");
+
+  const createAccount = async (name: string, kind: Account["kind"]) => {
+    const created = await guard(() =>
+      api.createAccount(token(), { name, kind, sort: accounts().length, archived: false })
+    );
+    mutateState((s) => (s ? { ...s, accounts: [...s.accounts, created] } : s));
+    flash("Account added");
+  };
+
+  const updateAccount = async (account: Account) => {
+    const saved = await guard(() => api.updateAccount(token(), account));
+    mutateState((s) =>
+      s ? { ...s, accounts: s.accounts.map((a) => (a.id === saved.id ? saved : a)) } : s
+    );
+    flash("Account saved");
+  };
+
+  // ── transfers ──
+  const insertTransferSorted = (list: Transfer[], t: Transfer): Transfer[] => {
+    const out = [...list];
+    const at = out.findIndex((x) => x.date < t.date || (x.date === t.date && x.id < t.id));
+    if (at === -1) out.push(t);
+    else out.splice(at, 0, t);
+    return out;
+  };
+
+  const addTransfer = async (input: Omit<Transfer, "id" | "month">) => {
+    const created = await guard(() =>
+      api.createTransfer(token(), { ...input, month: input.date.slice(0, 7) })
+    );
+    if (created.month === month()) {
+      mutateState((s) => (s ? { ...s, transfers: insertTransferSorted(s.transfers, created) } : s));
+    } else {
+      flash(`Transfer added to ${created.month} (different month)`);
+    }
+    return created;
+  };
+
+  const updateTransfer = async (transfer: Transfer) => {
+    const saved = await guard(() => api.updateTransfer(token(), transfer));
+    mutateState((s) => {
+      if (!s) return s;
+      const rest = s.transfers.filter((x) => x.id !== saved.id);
+      return {
+        ...s,
+        transfers: saved.month === s.month ? insertTransferSorted(rest, saved) : rest,
+      };
+    });
+  };
+
+  const deleteTransfer = async (id: number) => {
+    await guard(() => api.deleteTransfer(token(), id));
+    mutateState((s) => (s ? { ...s, transfers: s.transfers.filter((x) => x.id !== id) } : s));
+  };
+
   // ── autosuggest ──
   const suggest = (q: string) => guard(() => api.suggest(token(), q)).then((r) => r.suggestions);
 
@@ -353,5 +417,13 @@ export function createBudgetStore() {
     saveBudget,
     saveNetWorth,
     suggest,
+    accounts,
+    activeAccounts,
+    accountName,
+    createAccount,
+    updateAccount,
+    addTransfer,
+    updateTransfer,
+    deleteTransfer,
   };
 }

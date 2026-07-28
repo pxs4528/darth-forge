@@ -60,6 +60,37 @@ Recreating the backend picks up the new value and (because sessions are
 in-memory) instantly signs out every device. Locally it's
 `$env:ADMIN_SECRET = '...'` before `npm run dev`.
 
+## Accounts & transfers
+
+Accounts (checking, credit cards, HYSA, brokerage — manageable in the UI via
+"manage accounts") attribute where each expense hit. Transfers move money
+between accounts and **never count as spending**: log your Discover/Chase
+payment as a transfer from checking, since the card's expenses were already
+recorded individually. Keep HYSA / index-fund contributions as *categorized
+transactions* — that's what drives budgets and the savings rate. Accounts are
+archived rather than deleted so history keeps its references.
+
+## Backups
+
+Nightly SQL dumps via cron on the Pi:
+
+```bash
+crontab -e
+# add:
+0 3 * * * /home/darth/darth-forge/scripts/backup-budget.sh >> /home/darth/backups/budget/backup.log 2>&1
+```
+
+Dumps land in `/home/darth/backups/budget/budget-YYYY-MM-DD.sql.gz`, pruned
+after 60 days, with a size sanity-check so a failed dump never overwrites a
+good one. Restore into a fresh or existing DB:
+
+```bash
+gunzip -c budget-2026-07-28.sql.gz | turso db shell darth-budget
+```
+
+The in-app "export csv" button is for human-readable monthly statements;
+these dumps are the real disaster-recovery path (full schema + all months).
+
 ## Keyboard shortcuts
 
 `?` help · `n` new transaction · `[`/`]` prev/next month · `j`/`k` select ·
