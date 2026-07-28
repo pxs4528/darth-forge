@@ -84,10 +84,11 @@ jobs:
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
-          # arm64 for 64-bit Pi OS, arm/v7 for 32-bit — the Pi pulls whichever
-          # matches. Build stages are pinned to BUILDPLATFORM so nothing
-          # compiles under QEMU.
-          platforms: linux/arm64,linux/arm/v7
+          # arm64 for 64-bit Pi OS, arm/v7 for 32-bit, amd64 so the same
+          # images run on any x86 cloud VM if hosting ever moves off the Pi.
+          # Build stages are pinned to BUILDPLATFORM so nothing compiles
+          # under QEMU.
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
           push: true
           tags: |
             ${{ env.IMAGE_PREFIX }}-${{ matrix.name }}:latest

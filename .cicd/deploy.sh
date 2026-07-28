@@ -13,7 +13,10 @@ set -euo pipefail
 #
 # flock -n drops duplicate webhook triggers.
 
-PROJECT_DIR="/home/darth/darth-forge"
+# Override PROJECT_DIR (or DEPLOY_BRANCH) via env when hosting moves —
+# nothing else in this script is host-specific.
+PROJECT_DIR="${PROJECT_DIR:-/home/darth/darth-forge}"
+DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
 LOG_FILE="$PROJECT_DIR/.cicd/deploy.log"
 LOCK_FILE="$PROJECT_DIR/.cicd/deploy.lock"
 
@@ -34,8 +37,8 @@ cd "$PROJECT_DIR"
 
 # ── 1/4  Sync repo (compose files, Caddyfile, this script) ──────────────────
 log "[1/4] Syncing repo..."
-git fetch origin main 2>&1 | tee -a "$LOG_FILE"
-git reset --hard origin/main 2>&1 | tee -a "$LOG_FILE"
+git fetch origin "$DEPLOY_BRANCH" 2>&1 | tee -a "$LOG_FILE"
+git reset --hard "origin/$DEPLOY_BRANCH" 2>&1 | tee -a "$LOG_FILE"
 
 # ── 2/4  Pull new images from GHCR ──────────────────────────────────────────
 log "[2/4] Pulling images..."
