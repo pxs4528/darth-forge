@@ -91,6 +91,24 @@ gunzip -c budget-2026-07-28.sql.gz | turso db shell darth-budget
 The in-app "export csv" button is for human-readable monthly statements;
 these dumps are the real disaster-recovery path (full schema + all months).
 
+### Off-Pi copies (PC / laptop)
+
+Three ways to get dumps off the Pi:
+
+1. **UI**: the header's `backup` button downloads the full SQL dump from any
+   logged-in device (uses your session — no extra setup).
+2. **Automated pull** (`scripts/backup-budget.ps1` + a daily Scheduled Task):
+   fetches `GET /api/admin/budget/dump` through the tunnel using the
+   dedicated `BACKUP_TOKEN` env var — a read-only token, so the admin
+   password never lives in a file. Setup:
+   - on the Pi: add `BACKUP_TOKEN=$(openssl rand -hex 24)` to the env file,
+     redeploy
+   - on the PC: put the same token + your domain in
+     `%USERPROFILE%\.budget-backup.json`
+   - register the task:
+     `Register-ScheduledTask` (already done on the desktop; see script header)
+3. **Manual**: `curl -H "X-Backup-Token: <token>" https://<domain>/api/admin/budget/dump -o budget.sql`
+
 ## Keyboard shortcuts
 
 `?` help · `n` new transaction · `[`/`]` prev/next month · `j`/`k` select ·
