@@ -72,16 +72,16 @@ func main() {
 	http.HandleFunc("/api/admin/uscis/test-notify", handlers.AdminOnly(uscisHandler.HandleTestNotify))
 
 	// Budget tool routes (protected)
-	http.HandleFunc("/api/admin/budget/categories", handlers.AdminOnly(budgetHandler.HandleCategories))
+	http.HandleFunc("/api/admin/budget/meta", handlers.AdminOnly(budgetHandler.HandleMeta))
 	http.HandleFunc("/api/admin/budget/month", handlers.AdminOnly(budgetHandler.HandleMonth))
-	http.HandleFunc("/api/admin/budget/budgets", handlers.AdminOnly(budgetHandler.HandleBudgets))
-	http.HandleFunc("/api/admin/budget/networth", handlers.AdminOnly(budgetHandler.HandleNetWorth))
-	http.HandleFunc("/api/admin/budget/transactions", handlers.AdminOnly(budgetHandler.HandleTransactions))
-	http.HandleFunc("/api/admin/budget/history", handlers.AdminOnly(budgetHandler.HandleHistory))
 	http.HandleFunc("/api/admin/budget/accounts", handlers.AdminOnly(budgetHandler.HandleAccounts))
-	http.HandleFunc("/api/admin/budget/transfers", handlers.AdminOnly(budgetHandler.HandleTransfers))
-	http.HandleFunc("/api/admin/budget/dump", handlers.AdminOrBackupToken(budgetHandler.HandleDump))
+	http.HandleFunc("/api/admin/budget/entries", handlers.AdminOnly(budgetHandler.HandleEntries))
+	http.HandleFunc("/api/admin/budget/budgets", handlers.AdminOnly(budgetHandler.HandleBudgets))
+	http.HandleFunc("/api/admin/budget/goal", handlers.AdminOnly(budgetHandler.HandleGoal))
+	http.HandleFunc("/api/admin/budget/history", handlers.AdminOnly(budgetHandler.HandleHistory))
+	http.HandleFunc("/api/admin/budget/register", handlers.AdminOnly(budgetHandler.HandleRegister))
 	http.HandleFunc("/api/admin/budget/suggest", handlers.AdminOnly(budgetHandler.HandleSuggest))
+	http.HandleFunc("/api/admin/budget/dump", handlers.AdminOrBackupToken(budgetHandler.HandleDump))
 
 	log.Info("server", "Server starting on :8080", nil)
 	if err := http.ListenAndServe(":8080", nil); err != nil {

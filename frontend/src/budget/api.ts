@@ -1,107 +1,89 @@
 // Typed client for /api/admin/budget/*. Every request carries the admin token
 // as X-Admin-Token, matching the existing AdminOnly middleware.
 
-export type Category = {
-  key: string;
-  label: string;
-  group: CategoryGroup;
-  default_cents: number;
-};
-
-export type CategoryGroup =
-  | "income"
-  | "housing"
-  | "transport"
-  | "food"
-  | "subscriptions"
-  | "savings"
-  | "investments"
-  | "personal"
-  | "misc";
-
-export type Transaction = {
-  id: number;
-  month: string;
-  date: string;
-  description: string;
-  amount_cents: number;
-  category: string;
-  account_id: number; // 0 = unassigned
-};
-
-export type AccountKind = "checking" | "savings" | "credit" | "investment" | "other";
+export type AccountType = "asset" | "liability" | "income" | "expense" | "equity";
 
 export type Account = {
   id: number;
   name: string;
-  kind: AccountKind;
+  type: AccountType;
+  subtype: string;
+  budget_group: string;
   sort: number;
   archived: boolean;
-  starting_balance_cents: number;
-  starting_month: string; // "YYYY-MM" — anchors when the starting balance applied
-  /** Running balance as of the currently viewed month. Server-computed;
-   * present when loaded via month state, 0 for a just-created account
-   * until the next state refetch. Credit accounts: amount owed. */
+};
+
+/** An account plus its balance through the viewed month. */
+export type AccountBalance = Account & {
   balance_cents: number;
+  change_cents: number;
 };
 
-export type Transfer = {
-  id: number;
-  month: string;
-  date: string;
-  from_account: number;
-  to_account: number;
+export type Split = {
+  id?: number;
+  account_id: number;
   amount_cents: number;
-  note: string;
 };
 
-export type NetWorth = {
+/** One transaction. Splits always sum to zero. */
+export type Entry = {
+  id: number;
+  date: string;
   month: string;
-  hysa_cents: number;
-  brokerage_cents: number;
-  k401_vested_cents: number;
-  k401_unvested_cents: number;
-  months_remaining: number;
+  description: string;
+  splits: Split[];
+};
+
+export type Goal = {
   goal_cents: number;
+  target_month: string;
+};
+
+export type Summary = {
+  income_cents: number;
+  expense_cents: number;
+  surplus_cents: number;
+  net_worth_cents: number;
+  net_worth_change_cents: number;
+  months_remaining: number;
+  target_monthly_cents: number;
 };
 
 export type MonthState = {
   month: string;
-  income_cents: number;
-  three_paycheck: boolean;
-  match_401k_cents: number;
-  budgets: Record<string, number>;
-  transactions: Transaction[];
-  net_worth: NetWorth;
-  accounts: Account[];
-  transfers: Transfer[];
+  accounts: AccountBalance[];
+  entries: Entry[];
+  budgets: Record<string, number>; // account id → monthly target
+  goal: Goal;
+  summary: Summary;
 };
 
 export type HistoryPoint = {
   month: string;
   income_cents: number;
-  spent_cents: number;
-  saved_cents: number;
+  expense_cents: number;
   net_worth_cents: number;
 };
 
 export type Suggestion = {
   description: string;
-  category: string;
-  count: number;
+  from_account_id: number;
+  to_account_id: number;
+  amount_cents: number;
+  uses: number;
 };
 
-export type CategoryCatalog = {
-  categories: Category[];
-  defaults: {
-    income_cents: number;
-    three_paycheck_income_cents: number;
-    match_401k_cents: number;
-    goal_cents: number;
-  };
+export type RegisterRow = Entry & {
+  amount_cents: number;
+  balance_cents: number;
 };
 
-/** Thrown for any non-2xx response so callers can show the server's message. */
+export type Meta = {
+  account_types: AccountType[];
+  budget_groups: string[];
+  defaults: { goal_cents: number; target_month: string };
+};
+
 export class ApiError extends Error {
   status: number;
   constructor(status: number, message: string) {
@@ -125,7 +107,6 @@ export const clearToken = () => {
   localStorage.removeItem(TOKEN_KEY);
 };
 
-/** Exchanges the admin password for a token via the existing auth route. */
 export const authenticate = async (password: string): Promise<string> => {
   const res = await fetch("/api/admin/auth", {
     method: "POST",
@@ -148,7 +129,6 @@ const request = async <T>(token: string, path: string, init: RequestInit = {}): 
       ...(init.headers ?? {}),
     },
   });
-
   if (res.status === 204) return undefined as T;
 
   const data = await res.json().catch(() => ({}));
@@ -159,51 +139,10 @@ const request = async <T>(token: string, path: string, init: RequestInit = {}): 
 };
 
 export const api = {
-  categories: (token: string) => request<CategoryCatalog>(token, "/api/admin/budget/categories"),
+  meta: (token: string) => request<Meta>(token, "/api/admin/budget/meta"),
 
   month: (token: string, month: string) =>
     request<MonthState>(token, `/api/admin/budget/month?m=${encodeURIComponent(month)}`),
-
-  saveMonth: (
-    token: string,
-    body: { month: string; income_cents: number; three_paycheck: boolean; match_401k_cents: number }
-  ) =>
-    request<{ message: string }>(token, "/api/admin/budget/month", {
-      method: "PUT",
-      body: JSON.stringify(body),
-    }),
-
-  saveBudgets: (token: string, month: string, budgets: Record<string, number>) =>
-    request<{ message: string }>(token, "/api/admin/budget/budgets", {
-      method: "PUT",
-      body: JSON.stringify({ month, budgets }),
-    }),
-
-  saveNetWorth: (token: string, netWorth: NetWorth) =>
-    request<{ message: string }>(token, "/api/admin/budget/networth", {
-      method: "PUT",
-      body: JSON.stringify(netWorth),
-    }),
-
-  createTransaction: (token: string, tx: Omit<Transaction, "id">) =>
-    request<Transaction>(token, "/api/admin/budget/transactions", {
-      method: "POST",
-      body: JSON.stringify(tx),
-    }),
-
-  updateTransaction: (token: string, tx: Transaction) =>
-    request<Transaction>(token, "/api/admin/budget/transactions", {
-      method: "PUT",
-      body: JSON.stringify(tx),
-    }),
-
-  deleteTransaction: (token: string, id: number) =>
-    request<{ message: string }>(token, `/api/admin/budget/transactions?id=${id}`, {
-      method: "DELETE",
-    }),
-
-  history: (token: string, limit = 24) =>
-    request<{ history: HistoryPoint[] }>(token, `/api/admin/budget/history?limit=${limit}`),
 
   createAccount: (token: string, account: Omit<Account, "id">) =>
     request<Account>(token, "/api/admin/budget/accounts", {
@@ -217,22 +156,37 @@ export const api = {
       body: JSON.stringify(account),
     }),
 
-  createTransfer: (token: string, transfer: Omit<Transfer, "id">) =>
-    request<Transfer>(token, "/api/admin/budget/transfers", {
+  createEntry: (token: string, entry: Omit<Entry, "id">) =>
+    request<Entry>(token, "/api/admin/budget/entries", {
       method: "POST",
-      body: JSON.stringify(transfer),
+      body: JSON.stringify(entry),
     }),
 
-  updateTransfer: (token: string, transfer: Transfer) =>
-    request<Transfer>(token, "/api/admin/budget/transfers", {
+  updateEntry: (token: string, entry: Entry) =>
+    request<Entry>(token, "/api/admin/budget/entries", {
       method: "PUT",
-      body: JSON.stringify(transfer),
+      body: JSON.stringify(entry),
     }),
 
-  deleteTransfer: (token: string, id: number) =>
-    request<{ message: string }>(token, `/api/admin/budget/transfers?id=${id}`, {
+  deleteEntry: (token: string, id: number) =>
+    request<{ message: string }>(token, `/api/admin/budget/entries?id=${id}`, {
       method: "DELETE",
     }),
+
+  saveBudget: (token: string, month: string, accountId: number, amountCents: number) =>
+    request<{ message: string }>(token, "/api/admin/budget/budgets", {
+      method: "PUT",
+      body: JSON.stringify({ month, account_id: accountId, amount_cents: amountCents }),
+    }),
+
+  saveGoal: (token: string, goal: Goal) =>
+    request<Goal>(token, "/api/admin/budget/goal", { method: "PUT", body: JSON.stringify(goal) }),
+
+  history: (token: string, limit = 24) =>
+    request<{ history: HistoryPoint[] }>(token, `/api/admin/budget/history?limit=${limit}`),
+
+  register: (token: string, accountId: number) =>
+    request<{ rows: RegisterRow[] }>(token, `/api/admin/budget/register?account=${accountId}`),
 
   suggest: (token: string, q: string) =>
     request<{ suggestions: Suggestion[] }>(
@@ -240,11 +194,8 @@ export const api = {
       `/api/admin/budget/suggest?q=${encodeURIComponent(q)}`
     ),
 
-  /** Full SQL dump as text (restore: pipe into `turso db shell`). */
   dump: async (token: string): Promise<string> => {
-    const res = await fetch("/api/admin/budget/dump", {
-      headers: { "X-Admin-Token": token },
-    });
+    const res = await fetch("/api/admin/budget/dump", { headers: { "X-Admin-Token": token } });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       throw new ApiError(res.status, (data as { error?: string }).error ?? res.statusText);

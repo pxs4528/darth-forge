@@ -1,17 +1,54 @@
-import { createEffect, createSignal, For, Show, onCleanup, type Component } from "solid-js";
-import type { Suggestion } from "./api";
-import { firstOfMonth, parseCents, today, currentMonth } from "./format";
-import { GROUP_META, type BudgetStore } from "./store";
+import { createEffect, createSignal, For, onCleanup, Show, type Component } from "solid-js";
+import type { AccountBalance, Suggestion } from "./api";
+import { currentMonth, firstOfMonth, parseCents, today } from "./format";
+import type { BudgetStore } from "./store";
 
-// Fast, keyboard-first transaction entry:
-//   Tab through date → description → amount → category; Enter anywhere submits.
-//   Typing a known description auto-fills its usual category; after submit the
-//   date and category stick, focus returns to description.
+// One form for every kind of money movement. A paycheck, a card purchase, a
+// credit-card payment and a transfer to savings are all the same shape:
+// an amount leaving one account and arriving in another. That's what makes
+// this simpler than the old two-form setup, not just prettier.
 
 type Props = {
   store: BudgetStore;
   /** Lets the page-level "n" shortcut focus the description input. */
   registerFocus: (fn: () => void) => void;
+};
+
+const inputCls =
+  "bg-[#0d1117] border border-[#30363d] rounded px-2.5 py-2 text-sm text-white " +
+  "outline-none focus:border-[#3987e5] placeholder-gray-600 w-full min-w-0";
+
+/** Groups accounts under <optgroup> headings so a long list stays scannable. */
+const AccountOptions: Component<{ accounts: AccountBalance[] }> = (props) => {
+  const groups = () => {
+    const out: { label: string; items: AccountBalance[] }[] = [];
+    for (const a of props.accounts) {
+      const label =
+        a.type === "asset"
+          ? "Accounts"
+          : a.type === "liability"
+            ? "Credit & debt"
+            : a.type === "income"
+              ? "Income"
+              : a.type === "expense"
+                ? "Spending"
+                : "Opening balances";
+      const existing = out.find((g) => g.label === label);
+      if (existing) existing.items.push(a);
+      else out.push({ label, items: [a] });
+    }
+    return out;
+  };
+
+  return (
+    <For each={groups()}>
+      {(g) => (
+        <optgroup label={g.label}>
+          <For each={g.items}>{(a) => <option value={String(a.id)}>{a.name}</option>}</For>
+        </optgroup>
+      )}
+    </For>
+  );
 };
 
 const EntryForm: Component<Props> = (props) => {
@@ -23,9 +60,8 @@ const EntryForm: Component<Props> = (props) => {
   const [date, setDate] = createSignal(defaultDate());
   const [desc, setDesc] = createSignal("");
   const [amount, setAmount] = createSignal("");
-  const [category, setCategory] = createSignal("");
-  const [account, setAccount] = createSignal(0);
-  const [categoryTouched, setCategoryTouched] = createSignal(false);
+  const [fromId, setFromId] = createSignal(0);
+  const [toId, setToId] = createSignal(0);
   const [error, setError] = createSignal("");
   const [busy, setBusy] = createSignal(false);
 
@@ -37,10 +73,9 @@ const EntryForm: Component<Props> = (props) => {
   let debounce: number | undefined;
 
   props.registerFocus(() => descRef?.focus());
-
   onCleanup(() => window.clearTimeout(debounce));
 
-  // Reset the sticky date when the user navigates to a different month.
+  // Reset the sticky date when navigating to a different month.
   createEffect(() => {
     setDate(defaultDate());
   });
@@ -48,6 +83,14 @@ const EntryForm: Component<Props> = (props) => {
   const closeSuggest = () => {
     setSuggestOpen(false);
     setSuggestIndex(-1);
+  };
+
+  const applySuggestion = (s: Suggestion) => {
+    setDesc(s.description);
+    if (s.from_account_id) setFromId(s.from_account_id);
+    if (s.to_account_id) setToId(s.to_account_id);
+    if (!amount() && s.amount_cents) setAmount((s.amount_cents / 100).toFixed(2));
+    closeSuggest();
   };
 
   const onDescInput = (value: string) => {
@@ -64,50 +107,47 @@ const EntryForm: Component<Props> = (props) => {
         setSuggestions(got);
         setSuggestOpen(got.length > 0);
         setSuggestIndex(-1);
-        // Exact match on a known description → auto-fill its usual category
-        // (unless the user already picked one by hand this entry).
-        const exact = got.find((s) => s.description.toLowerCase() === value.trim().toLowerCase());
-        if (exact && !categoryTouched()) setCategory(exact.category);
       } catch {
         /* suggestions are best-effort */
       }
     }, 180);
   };
 
-  const pickSuggestion = (s: Suggestion) => {
-    setDesc(s.description);
-    setCategory(s.category);
-    closeSuggest();
-  };
-
   const submit = async () => {
     setError("");
     const cents = parseCents(amount());
     if (!desc().trim()) return setError("Description required");
-    if (cents === null || cents === 0) return setError("Enter a non-zero amount");
-    if (!category()) return setError("Pick a category");
+    if (cents === null || cents <= 0) return setError("Enter a positive amount");
+    if (!fromId() || !toId()) return setError("Pick where the money came from and went to");
+    if (fromId() === toId()) return setError("From and to must be different accounts");
     if (!date()) return setError("Pick a date");
 
     setBusy(true);
     try {
-      await store.addTransaction({
+      await store.addEntry({
         date: date(),
         description: desc().trim(),
-        amount_cents: cents,
-        category: category(),
-        account_id: account(),
+        fromId: fromId(),
+        toId: toId(),
+        amountCents: cents,
       });
-      // Date + category + account stick for rapid statement entry; text fields clear.
+      // Date and accounts stick for rapid statement entry; text clears.
       setDesc("");
       setAmount("");
       setSuggestions([]);
       closeSuggest();
-      setCategoryTouched(false);
       descRef?.focus();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const onFieldKey = (e: KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      submit();
     }
   };
 
@@ -128,51 +168,36 @@ const EntryForm: Component<Props> = (props) => {
         closeSuggest();
         return;
       }
-      if (e.key === "Enter" && suggestIndex() >= 0) {
-        e.preventDefault();
-        pickSuggestion(suggestions()[suggestIndex()]);
+      if ((e.key === "Enter" || e.key === "Tab") && suggestIndex() >= 0) {
+        if (e.key === "Enter") e.preventDefault();
+        applySuggestion(suggestions()[suggestIndex()]);
         return;
       }
-      if (e.key === "Tab" && suggestIndex() >= 0) {
-        pickSuggestion(suggestions()[suggestIndex()]);
-        return; // let Tab move focus onward
-      }
     }
     if (e.key === "Enter") {
       e.preventDefault();
       submit();
     }
   };
-
-  const onFieldKey = (e: KeyboardEvent) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      submit();
-    }
-  };
-
-  const inputCls =
-    "bg-[#0d1117] border border-[#30363d] rounded px-2.5 py-2 text-sm text-white " +
-    "outline-none focus:border-[#3987e5] placeholder-gray-600";
 
   return (
     <section class="bg-[#0d1117] border border-[#30363d] rounded-lg p-4">
       <div class="flex items-baseline justify-between mb-3">
-        <h2 class="text-sm font-bold text-gray-200">Add transaction</h2>
-        <span class="text-[11px] text-gray-500">Enter to add · date &amp; category stick</span>
+        <h2 class="text-sm font-semibold text-gray-200">Record a transaction</h2>
+        <span class="text-[11px] text-gray-500">Enter to add · date &amp; accounts stick</span>
       </div>
 
-      <div class="grid grid-cols-2 sm:grid-cols-[8.5rem_1fr_6.5rem_11rem_8rem_auto] gap-2 items-start">
+      <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 items-start">
         <input
           type="date"
           value={date()}
           onInput={(e) => setDate(e.currentTarget.value)}
           onKeyDown={onFieldKey}
-          class={inputCls + " tabular-nums col-span-1"}
+          class={inputCls + " tabular-nums"}
           aria-label="Date"
         />
 
-        <div class="relative col-span-1 sm:col-span-1">
+        <div class="relative col-span-1">
           <input
             ref={descRef}
             type="text"
@@ -180,8 +205,8 @@ const EntryForm: Component<Props> = (props) => {
             onInput={(e) => onDescInput(e.currentTarget.value)}
             onKeyDown={onDescKey}
             onBlur={() => window.setTimeout(closeSuggest, 150)}
-            placeholder="Description (e.g. HEB, Shell, Rent)"
-            class={inputCls + " w-full"}
+            placeholder="Description"
+            class={inputCls}
             autocomplete="off"
             spellcheck={false}
             aria-label="Description"
@@ -195,7 +220,7 @@ const EntryForm: Component<Props> = (props) => {
                       type="button"
                       onMouseDown={(e) => {
                         e.preventDefault();
-                        pickSuggestion(s);
+                        applySuggestion(s);
                       }}
                       class={
                         "w-full text-left px-2.5 py-1.5 text-sm flex justify-between gap-2 " +
@@ -203,8 +228,7 @@ const EntryForm: Component<Props> = (props) => {
                       }>
                       <span class="text-white truncate">{s.description}</span>
                       <span class="text-[11px] text-gray-400 shrink-0">
-                        {store.catalog()?.categories.find((c) => c.key === s.category)?.label ??
-                          s.category}
+                        {store.accountName(s.to_account_id)}
                       </span>
                     </button>
                   </li>
@@ -226,43 +250,34 @@ const EntryForm: Component<Props> = (props) => {
         />
 
         <select
-          value={category()}
-          onChange={(e) => {
-            setCategory(e.currentTarget.value);
-            setCategoryTouched(true);
-          }}
+          value={String(fromId())}
+          onChange={(e) => setFromId(Number(e.currentTarget.value))}
           onKeyDown={onFieldKey}
-          class={inputCls + " w-full"}
-          aria-label="Category">
-          <option value="" disabled>
-            Category…
+          class={inputCls + " truncate"}
+          aria-label="From account">
+          <option value="0" disabled>
+            From…
           </option>
-          <For each={store.catalog()?.categories ?? []}>
-            {(c) => (
-              <option value={c.key}>
-                {GROUP_META[c.group]?.label ?? c.group} · {c.label}
-              </option>
-            )}
-          </For>
+          <AccountOptions accounts={store.sourceAccounts()} />
         </select>
 
         <select
-          value={String(account())}
-          onChange={(e) => setAccount(Number(e.currentTarget.value))}
+          value={String(toId())}
+          onChange={(e) => setToId(Number(e.currentTarget.value))}
           onKeyDown={onFieldKey}
-          class={inputCls + " w-full"}
-          aria-label="Account">
-          <option value="0">No account</option>
-          <For each={store.activeAccounts()}>
-            {(a) => <option value={String(a.id)}>{a.name}</option>}
-          </For>
+          class={inputCls + " truncate"}
+          aria-label="To account">
+          <option value="0" disabled>
+            To…
+          </option>
+          <AccountOptions accounts={store.destinationAccounts()} />
         </select>
 
         <button
           type="button"
           onClick={submit}
           disabled={busy()}
-          class="px-4 py-2 text-sm font-bold rounded bg-[#238636] text-white hover:bg-[#2ea043] disabled:opacity-50 col-span-2 sm:col-span-1">
+          class="px-4 py-2 text-sm font-semibold rounded bg-[#238636] text-white hover:bg-[#2ea043] disabled:opacity-50 w-full sm:w-auto col-span-2 sm:col-span-1">
           {busy() ? "…" : "Add"}
         </button>
       </div>
@@ -270,6 +285,13 @@ const EntryForm: Component<Props> = (props) => {
       <Show when={error()}>
         <p class="mt-2 text-xs text-[#f85149]">{error()}</p>
       </Show>
+
+      <p class="mt-2 text-[11px] text-gray-600 leading-relaxed">
+        Paycheck: <span class="text-gray-500">Paycheck → Checking</span> · Card purchase:{" "}
+        <span class="text-gray-500">Discover → Groceries</span> · Card payment:{" "}
+        <span class="text-gray-500">Checking → Discover</span> · Save:{" "}
+        <span class="text-gray-500">Checking → HYSA</span>
+      </p>
     </section>
   );
 };
