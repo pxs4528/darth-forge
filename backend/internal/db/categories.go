@@ -12,6 +12,7 @@ type Category struct {
 
 // Category group keys. The frontend maps these to colors.
 const (
+	GroupIncome        = "income"
 	GroupHousing       = "housing"
 	GroupTransport     = "transport"
 	GroupFood          = "food"
@@ -24,6 +25,13 @@ const (
 
 // Categories is ordered for display. Order here drives order in the UI.
 var Categories = []Category{
+	// Income has no budget concept (DefaultCents 0) — it's logged as a
+	// transaction like everything else, and the frontend derives the
+	// month's income by summing these categories rather than reading a
+	// manually-typed figure.
+	{"paycheck", "Paycheck", GroupIncome, 0},
+	{"other_income", "Other Income", GroupIncome, 0},
+
 	{"rent", "Rent", GroupHousing, 112000},
 	{"trash", "Trash / Recycling", GroupHousing, 1800},
 	{"amenity", "Amenity Fee", GroupHousing, 1500},
@@ -74,6 +82,21 @@ var SavingsCategories = []string{"hysa", "index_fund"}
 // IsSavings reports whether a category contributes to net worth.
 func IsSavings(key string) bool {
 	for _, k := range SavingsCategories {
+		if k == key {
+			return true
+		}
+	}
+	return false
+}
+
+// IncomeCategories are logged as transactions like any expense, but stored
+// with a negative amount_cents (money entering, not leaving) and excluded
+// from spend totals. Used to derive a month's income for the trend chart.
+var IncomeCategories = []string{"paycheck", "other_income"}
+
+// IsIncome reports whether a category represents money coming in.
+func IsIncome(key string) bool {
+	for _, k := range IncomeCategories {
 		if k == key {
 			return true
 		}

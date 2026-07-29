@@ -33,12 +33,18 @@ const Dashboard: Component<Props> = (props) => {
   const [editingCat, setEditingCat] = createSignal<string | null>(null);
   const [draft, setDraft] = createSignal("");
 
+  // Income has no budget bar — it's logged as a transaction, not tracked
+  // against a target — so it's excluded from the grouped budget list.
   const groups = () => {
     const cats = store.catalog()?.categories ?? [];
     const seen: string[] = [];
-    for (const c of cats) if (!seen.includes(c.group)) seen.push(c.group);
+    for (const c of cats) if (c.group !== "income" && !seen.includes(c.group)) seen.push(c.group);
     return seen;
   };
+
+  const incomeEntryCount = () =>
+    (store.state()?.transactions ?? []).filter((tx) => store.groupOf()[tx.category] === "income")
+      .length;
 
   const startBudgetEdit = (key: string, cents: number) => {
     setEditingCat(key);
@@ -66,8 +72,8 @@ const Dashboard: Component<Props> = (props) => {
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <Tile
             label="Income"
-            value={money(store.state()!.income_cents)}
-            sub={store.state()!.three_paycheck ? "3-paycheck month" : "2 paychecks"}
+            value={money(m()!.incomeCents)}
+            sub={`${incomeEntryCount()} ${incomeEntryCount() === 1 ? "entry" : "entries"} logged`}
           />
           <Tile
             label="Spent"

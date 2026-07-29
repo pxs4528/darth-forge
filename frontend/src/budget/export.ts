@@ -18,7 +18,7 @@ export const buildCsv = (
   lines.push(`Budget export,${state.month}`);
   lines.push("");
   lines.push("Summary,USD");
-  lines.push(`Income,${usd(state.income_cents)}`);
+  lines.push(`Income,${usd(metrics.incomeCents)}`);
   lines.push(`401k match,${usd(state.match_401k_cents)}`);
   lines.push(`Total outflows,${usd(metrics.totalOutCents)}`);
   lines.push(`Spending (excl. savings),${usd(metrics.spendCents)}`);
