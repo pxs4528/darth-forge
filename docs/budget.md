@@ -96,15 +96,28 @@ receivable, and moving cash into it leaves net worth unchanged (you swapped
 cash for a claim) — which is correct, and something the old model couldn't
 express.
 
-## Accounts & transfers (legacy note)
+## Managing accounts
 
-Accounts (checking, credit cards, HYSA, brokerage — manageable in the UI via
-"manage accounts") attribute where each expense hit. Transfers move money
-between accounts and **never count as spending**: log your Discover/Chase
-payment as a transfer from checking, since the card's expenses were already
-recorded individually. Keep HYSA / index-fund contributions as *categorized
-transactions* — that's what drives budgets and the savings rate. Accounts are
-archived rather than deleted so history keeps its references.
+"manage" on the Accounts panel adds, renames, retypes and archives accounts.
+Accounts are archived rather than deleted so historical splits keep their
+references.
+
+Two things worth knowing:
+
+- **Paying a credit card is not spending.** It's an entry from Checking to
+  the card, which reduces the debt. The purchases were already recorded when
+  you made them; counting the payment too would double them.
+- **Contributions to savings or investments are not expenses either** — they
+  move money between two accounts you own, so net worth is unchanged and the
+  surplus already reflects them. Only expense accounts get budgets.
+
+### Upgrading from the pre-double-entry schema
+
+The first boot after this change renames the old tables to `transactions_v1`,
+`transfers_v1`, `months_v1`, `net_worth_v1`, `accounts_v1` and `budgets_v1`
+rather than dropping them, so nothing is destroyed. Old data is readable with
+e.g. `SELECT * FROM transactions_v1;` and the tables can be dropped by hand
+once you're happy.
 
 ## Backups
 
@@ -158,7 +171,19 @@ turso db shell darth-budget
 
 ```sql
 -- restaurant spend by month, all time
-SELECT month, SUM(amount_cents)/100.0 AS dollars
-FROM transactions WHERE category = 'restaurants'
-GROUP BY month ORDER BY month;
+SELECT t.month, SUM(s.amount_cents)/100.0 AS dollars
+FROM splits s
+JOIN txns t     ON t.id = s.txn_id
+JOIN accounts a ON a.id = s.account_id
+WHERE a.name = 'Restaurants / Takeout'
+GROUP BY t.month ORDER BY t.month;
+
+-- net worth right now (debt is stored negative, so it subtracts itself)
+SELECT SUM(s.amount_cents)/100.0 AS net_worth
+FROM splits s JOIN accounts a ON a.id = s.account_id
+WHERE a.type IN ('asset','liability');
+
+-- proof the books balance: every entry must sum to zero, so this returns nothing
+SELECT txn_id, SUM(amount_cents) FROM splits
+GROUP BY txn_id HAVING SUM(amount_cents) != 0;
 ```
