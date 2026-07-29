@@ -1,10 +1,10 @@
-import { createSignal, For, Show, type Component } from "solid-js";
+import { createMemo, createSignal, For, Show, type Component } from "solid-js";
 import { money, moneyShort, parseCents, percent } from "./format";
-import { budgetStatus, GROUP_META, STATUS_COLORS, type BudgetStore } from "./store";
+import { budgetStatus, GROUP_LABELS, STATUS_COLORS, type BudgetStore } from "./store";
 
-// Current-month dashboard: stat tiles, then per-category budget bars grouped
-// by category group. Bar fill color = status (green/yellow/red); the group
-// chip + label carry identity, so color never stands alone.
+// Headline numbers and budget-vs-actual. Everything here is derived from the
+// ledger — income is the sum of what landed in income accounts, spending the
+// sum that landed in expense accounts, surplus the difference.
 
 type Props = { store: BudgetStore };
 
@@ -17,7 +17,7 @@ const Tile: Component<{
   <div class="bg-[#0d1117] border border-[#30363d] rounded-lg px-4 py-3">
     <div class="text-[11px] uppercase tracking-wider text-gray-500">{p.label}</div>
     <div
-      class="text-xl font-bold tabular-nums mt-0.5"
+      class="text-xl font-semibold tabular-nums mt-0.5"
       style={{ color: p.tone === "good" ? "#3fb950" : p.tone === "bad" ? "#f85149" : "#ffffff" }}>
       {p.value}
     </div>
@@ -30,144 +30,109 @@ const Tile: Component<{
 const Dashboard: Component<Props> = (props) => {
   const { store } = props;
 
-  const [editingCat, setEditingCat] = createSignal<string | null>(null);
+  const [editingId, setEditingId] = createSignal<number | null>(null);
   const [draft, setDraft] = createSignal("");
 
-  // Income has no budget bar — it's logged as a transaction, not tracked
-  // against a target — so it's excluded from the grouped budget list.
-  const groups = () => {
-    const cats = store.catalog()?.categories ?? [];
-    const seen: string[] = [];
-    for (const c of cats) if (c.group !== "income" && !seen.includes(c.group)) seen.push(c.group);
-    return seen;
+  const s = () => store.summary();
+
+  const savingsRate = () => {
+    const sum = s();
+    if (!sum || sum.income_cents <= 0) return 0;
+    return sum.surplus_cents / sum.income_cents;
   };
 
-  const incomeEntryCount = () =>
-    (store.state()?.transactions ?? []).filter((tx) => store.groupOf()[tx.category] === "income")
-      .length;
+  /** Expense accounts grouped by budget_group, in catalog order. */
+  const groups = createMemo(() => {
+    const out: { key: string; accounts: ReturnType<BudgetStore["accounts"]> }[] = [];
+    for (const a of store.accounts()) {
+      if (a.archived || a.type !== "expense") continue;
+      const key = a.budget_group || "";
+      const existing = out.find((g) => g.key === key);
+      if (existing) existing.accounts.push(a);
+      else out.push({ key, accounts: [a] });
+    }
+    return out;
+  });
 
-  const startBudgetEdit = (key: string, cents: number) => {
-    setEditingCat(key);
+  const budgetFor = (id: number) => store.state()?.budgets[String(id)] ?? 0;
+  const spentFor = (id: number) => store.spentByAccount()[id] ?? 0;
+
+  const startEdit = (id: number, cents: number) => {
+    setEditingId(id);
     setDraft((cents / 100).toFixed(2));
   };
 
-  const commitBudgetEdit = async (key: string) => {
+  const commitEdit = async (id: number) => {
     const cents = parseCents(draft());
-    setEditingCat(null);
-    if (cents === null || cents < 0) return;
-    if (cents === (store.state()?.budgets[key] ?? -1)) return;
+    setEditingId(null);
+    if (cents === null || cents < 0 || cents === budgetFor(id)) return;
     try {
-      await store.saveBudget(key, cents);
+      await store.saveBudget(id, cents);
     } catch (e) {
       store.flash(e instanceof Error ? e.message : "Failed to save budget");
     }
   };
 
-  const m = store.metrics;
-
   return (
     <div class="space-y-4">
-      {/* Stat tiles */}
-      <Show when={m() && store.state()}>
+      <Show when={s()}>
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <Tile
-            label="Income"
-            value={money(m()!.incomeCents)}
-            sub={`${incomeEntryCount()} ${incomeEntryCount() === 1 ? "entry" : "entries"} logged`}
-          />
-          <Tile
-            label="Spent"
-            value={money(m()!.spendCents)}
-            sub={`${money(m()!.totalOutCents)} incl. savings`}
-          />
+          <Tile label="Income" value={money(s()!.income_cents)} sub="money in this month" />
+          <Tile label="Spent" value={money(s()!.expense_cents)} sub="expenses this month" />
           <Tile
             label="Surplus"
-            value={money(m()!.surplusCents)}
-            tone={m()!.surplusCents >= 0 ? "good" : "bad"}
-            sub="income − all outflows"
+            value={money(s()!.surplus_cents)}
+            tone={s()!.surplus_cents >= 0 ? "good" : "bad"}
+            sub="income − spending"
           />
           <Tile
             label="Savings rate"
-            value={`${Math.round(m()!.savingsRate * 100)}%`}
-            tone={m()!.savingsRate >= 0.3 ? "good" : ""}
-            sub={`${moneyShort(m()!.investedCents)} to savings + match`}
+            value={`${Math.round(savingsRate() * 100)}%`}
+            tone={savingsRate() >= 0.3 ? "good" : ""}
+            sub={`net worth ${s()!.net_worth_change_cents >= 0 ? "+" : ""}${moneyShort(
+              s()!.net_worth_change_cents
+            )} this month`}
           />
-        </div>
-
-        {/* Where savings went */}
-        <div class="bg-[#0d1117] border border-[#30363d] rounded-lg px-4 py-3 flex flex-wrap gap-x-6 gap-y-1 text-sm">
-          <span class="text-gray-500 text-[11px] uppercase tracking-wider self-center">
-            To net worth
-          </span>
-          <span class="text-gray-300">
-            HYSA{" "}
-            <span class="text-white font-bold tabular-nums">
-              {money(m()!.spentByCategory["hysa"] ?? 0)}
-            </span>
-          </span>
-          <span class="text-gray-300">
-            Index{" "}
-            <span class="text-white font-bold tabular-nums">
-              {money(m()!.spentByCategory["index_fund"] ?? 0)}
-            </span>
-          </span>
-          <span class="text-gray-300">
-            401k match{" "}
-            <span class="text-white font-bold tabular-nums">
-              {money(store.state()!.match_401k_cents)}
-            </span>
-          </span>
-          <span class="text-gray-300 ml-auto">
-            = <span class="text-[#3fb950] font-bold tabular-nums">{money(m()!.investedCents)}</span>
-          </span>
         </div>
       </Show>
 
-      {/* Category bars, grouped */}
+      {/* Budgets */}
       <section class="bg-[#0d1117] border border-[#30363d] rounded-lg p-4">
         <div class="flex items-baseline justify-between mb-1">
-          <h2 class="text-sm font-bold text-gray-200">Budgets</h2>
-          <span class="text-[11px] text-gray-500">click a budget number to edit</span>
+          <h2 class="text-sm font-semibold text-gray-200">Budgets</h2>
+          <span class="text-[11px] text-gray-500">click a target to edit</span>
         </div>
 
         <For each={groups()}>
           {(group) => {
-            const cats = () => (store.catalog()?.categories ?? []).filter((c) => c.group === group);
-            const groupSpent = () =>
-              cats().reduce((sum, c) => sum + (m()?.spentByCategory[c.key] ?? 0), 0);
-            const groupBudget = () =>
-              cats().reduce((sum, c) => sum + (store.state()?.budgets[c.key] ?? 0), 0);
+            const groupSpent = () => group.accounts.reduce((sum, a) => sum + spentFor(a.id), 0);
+            const groupBudget = () => group.accounts.reduce((sum, a) => sum + budgetFor(a.id), 0);
             return (
               <div class="mt-3">
                 <div class="flex items-center gap-2 mb-1.5">
-                  <span
-                    class="w-2.5 h-2.5 rounded-sm shrink-0"
-                    style={{ background: GROUP_META[group]?.color }}
-                  />
-                  <span class="text-xs font-bold text-gray-300 uppercase tracking-wider">
-                    {GROUP_META[group]?.label ?? group}
+                  <span class="text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                    {GROUP_LABELS[group.key] ?? group.key}
                   </span>
                   <span class="text-[11px] text-gray-500 tabular-nums ml-auto">
                     {money(groupSpent())} / {money(groupBudget())}
                   </span>
                 </div>
                 <div class="space-y-1">
-                  <For each={cats()}>
-                    {(c) => {
-                      const spent = () => m()?.spentByCategory[c.key] ?? 0;
-                      const budget = () => store.state()?.budgets[c.key] ?? 0;
-                      const pct = () => percent(spent(), budget());
+                  <For each={group.accounts}>
+                    {(a) => {
+                      const spent = () => spentFor(a.id);
+                      const budget = () => budgetFor(a.id);
                       const status = () => budgetStatus(spent(), budget());
                       return (
-                        <div class="grid grid-cols-[10rem_1fr_auto] sm:grid-cols-[12rem_1fr_9rem] gap-2 items-center text-sm">
-                          <span class="text-gray-300 truncate text-[13px]">{c.label}</span>
+                        <div class="grid grid-cols-[9rem_minmax(0,1fr)_auto] sm:grid-cols-[12rem_minmax(0,1fr)_9rem] gap-2 items-center text-sm">
+                          <span class="text-gray-300 truncate text-[13px]">{a.name}</span>
                           <div
                             class="h-2 rounded-full bg-[#21262d] overflow-hidden"
                             role="presentation">
                             <div
                               class="h-full rounded-full transition-all"
                               style={{
-                                width: `${Math.min(100, pct())}%`,
+                                width: `${Math.min(100, percent(spent(), budget()))}%`,
                                 background: STATUS_COLORS[status()],
                               }}
                             />
@@ -176,12 +141,12 @@ const Dashboard: Component<Props> = (props) => {
                             <span style={{ color: STATUS_COLORS[status()] }}>{money(spent())}</span>
                             <span class="text-gray-600"> / </span>
                             <Show
-                              when={editingCat() === c.key}
+                              when={editingId() === a.id}
                               fallback={
                                 <button
-                                  onClick={() => startBudgetEdit(c.key, budget())}
+                                  onClick={() => startEdit(a.id, budget())}
                                   class="text-gray-400 hover:text-white underline decoration-dotted underline-offset-2"
-                                  aria-label={`Edit ${c.label} budget`}>
+                                  aria-label={`Edit ${a.name} budget`}>
                                   {moneyShort(budget())}
                                 </button>
                               }>
@@ -191,16 +156,18 @@ const Dashboard: Component<Props> = (props) => {
                                 value={draft()}
                                 ref={(el) => setTimeout(() => el.focus())}
                                 onInput={(e) => setDraft(e.currentTarget.value)}
-                                onBlur={() => commitBudgetEdit(c.key)}
+                                onBlur={() => commitEdit(a.id)}
                                 onKeyDown={(e) => {
-                                  if (e.key === "Enter") commitBudgetEdit(c.key);
-                                  if (e.key === "Escape") setEditingCat(null);
+                                  if (e.key === "Enter") commitEdit(a.id);
+                                  if (e.key === "Escape") setEditingId(null);
                                 }}
                                 class="w-20 bg-[#161b22] border border-[#3987e5] rounded px-1 py-0 text-right tabular-nums text-white outline-none"
                               />
                             </Show>
                             <Show when={status() === "over"}>
-                              <span class="ml-1 text-[10px] font-bold text-[#f85149]">OVER</span>
+                              <span class="ml-1 text-[10px] font-semibold text-[#f85149]">
+                                OVER
+                              </span>
                             </Show>
                           </span>
                         </div>

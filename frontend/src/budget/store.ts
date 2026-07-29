@@ -7,33 +7,41 @@ import {
   loadToken,
   saveToken,
   type Account,
-  type Transfer,
-  type CategoryCatalog,
+  type AccountBalance,
+  type AccountType,
+  type Entry,
+  type Goal,
   type HistoryPoint,
+  type Meta,
   type MonthState,
-  type NetWorth,
-  type Transaction,
+  type Split,
 } from "./api";
 import { currentMonth, shiftMonth } from "./format";
 
-// ── colors ───────────────────────────────────────────────────────────────────
-// Category groups carry identity colors (user-picked); progress fills carry
-// status. Group colors always render next to a text label, so the low-contrast
-// navy/grey entries are acceptable. Chart series use the validated trio
-// #3987e5/#d95926/#1baf7a (passes CVD + contrast gates on #0d1117).
+// ── display vocabulary ───────────────────────────────────────────────────────
+//
+// Under double-entry the sign of a balance is determined by account type
+// (see the schema comment in backend/internal/db/db.go). Users shouldn't have
+// to think in credits and debits, so the helpers below translate stored signs
+// into "how much do I have / owe / earn / spend".
 
-export const GROUP_META: Record<string, { label: string; color: string }> = {
-  // #eda100 (yellow) — distinct from transport's #1baf7a; other groups
-  // already occupy blue/orange/aqua/violet/green/greys.
-  income: { label: "Income", color: "#eda100" },
-  housing: { label: "Housing", color: "#3987e5" },
-  transport: { label: "Transport", color: "#1baf7a" },
-  food: { label: "Food", color: "#d95926" },
-  subscriptions: { label: "Subscriptions", color: "#9085e9" },
-  savings: { label: "Savings", color: "#1c5cab" },
-  investments: { label: "Investments", color: "#008300" },
-  personal: { label: "Personal", color: "#898781" },
-  misc: { label: "Misc", color: "#5f5d58" },
+export const TYPE_META: Record<AccountType, { label: string; plural: string; color: string }> = {
+  asset: { label: "Asset", plural: "Accounts", color: "#3987e5" },
+  liability: { label: "Liability", plural: "Credit & debt", color: "#d95926" },
+  income: { label: "Income", plural: "Income", color: "#1baf7a" },
+  expense: { label: "Expense", plural: "Spending", color: "#9085e9" },
+  equity: { label: "Equity", plural: "Opening balances", color: "#898781" },
+};
+
+export const GROUP_LABELS: Record<string, string> = {
+  housing: "Housing",
+  transport: "Transport",
+  food: "Food",
+  subscriptions: "Subscriptions",
+  savings: "Savings",
+  personal: "Personal",
+  misc: "Misc",
+  "": "Other",
 };
 
 export const STATUS_COLORS = {
@@ -43,9 +51,9 @@ export const STATUS_COLORS = {
 };
 
 export const CHART_COLORS = {
-  income: "#3987e5",
-  spent: "#d95926",
-  saved: "#1baf7a",
+  income: "#1baf7a",
+  expense: "#d95926",
+  netWorth: "#3987e5",
 };
 
 export const budgetStatus = (spent: number, budget: number): keyof typeof STATUS_COLORS => {
@@ -56,92 +64,64 @@ export const budgetStatus = (spent: number, budget: number): keyof typeof STATUS
   return "good";
 };
 
-// ── derived metrics ──────────────────────────────────────────────────────────
+/**
+ * Stored balances are signed by accounting convention; this flips the ones
+ * users read as positive quantities. A liability balance of -50000 means
+ * "you owe $500", and income of -287592 means "you earned $2,875.92".
+ */
+export const displayBalance = (type: AccountType, cents: number): number =>
+  type === "liability" || type === "income" || type === "equity" ? -cents : cents;
 
-export type Metrics = {
-  incomeCents: number; // derived from this month's income-category transactions
-  totalOutCents: number; // every non-income transaction this month
-  savedTxCents: number; // HYSA + index fund transactions
-  spendCents: number; // consumption = totalOut - savedTx
-  investedCents: number; // savedTx + 401k match
-  surplusCents: number; // incomeCents - totalOut
-  savingsRate: number; // invested / (incomeCents + match), 0..1
-  spentByCategory: Record<string, number>;
-  netWorthTotalCents: number;
-  targetMonthlyCents: number; // (goal - net worth) / months remaining
-  plannedContribCents: number; // budgeted HYSA + index + match
-  onTrackDeltaCents: number; // invested - target
-  projections: { none: number; realistic: number; optimistic: number };
+/**
+ * Simple entries (the overwhelming majority) have exactly two splits: one
+ * negative side money left, one positive side it arrived. This reduces such
+ * an entry to the from/to/amount shape the entry form speaks, and returns
+ * null for genuine multi-split entries so callers can fall back to a detailed
+ * view rather than silently misrepresenting them.
+ */
+export type SimpleShape = { fromId: number; toId: number; amountCents: number };
+
+export const simpleShape = (entry: { splits: Split[] }): SimpleShape | null => {
+  if (entry.splits.length !== 2) return null;
+  const from = entry.splits.find((s) => s.amount_cents < 0);
+  const to = entry.splits.find((s) => s.amount_cents > 0);
+  if (!from || !to) return null;
+  return { fromId: from.account_id, toId: to.account_id, amountCents: to.amount_cents };
 };
 
-/** Future value of base + monthly contributions at an annual rate. */
+/** Builds the two splits for a from → to movement of `amountCents`. */
+export const splitsFor = (fromId: number, toId: number, amountCents: number): Split[] => [
+  { account_id: fromId, amount_cents: -amountCents },
+  { account_id: toId, amount_cents: amountCents },
+];
+
+// ── derived metrics ──────────────────────────────────────────────────────────
+
+export type Projections = { none: number; realistic: number; optimistic: number };
+
+/** Future value of a base amount plus monthly contributions at an annual rate. */
 const futureValue = (
   baseCents: number,
   contribCents: number,
   months: number,
   annualRate: number
 ): number => {
+  if (months <= 0) return baseCents;
   if (annualRate === 0) return baseCents + contribCents * months;
   const i = annualRate / 12;
   const growth = Math.pow(1 + i, months);
   return Math.round(baseCents * growth + contribCents * ((growth - 1) / i));
 };
 
-export const computeMetrics = (
-  state: MonthState,
-  savingsKeys: Set<string>,
-  incomeKeys: Set<string>
-): Metrics => {
-  const spentByCategory: Record<string, number> = {};
-  let totalOut = 0;
-  let savedTx = 0;
-  let incomeCents = 0;
-
-  for (const tx of state.transactions) {
-    spentByCategory[tx.category] = (spentByCategory[tx.category] ?? 0) + tx.amount_cents;
-    if (incomeKeys.has(tx.category)) {
-      // Stored negative (money entering); a paycheck must never reduce
-      // "total outflows" the way it would if summed in with everything else.
-      incomeCents += -tx.amount_cents;
-    } else {
-      totalOut += tx.amount_cents;
-      if (savingsKeys.has(tx.category)) savedTx += tx.amount_cents;
-    }
-  }
-
-  const nw = state.net_worth;
-  const netWorthTotal =
-    nw.hysa_cents + nw.brokerage_cents + nw.k401_vested_cents + nw.k401_unvested_cents;
-  const months = Math.max(1, nw.months_remaining);
-  const remaining = nw.goal_cents - netWorthTotal;
-  const target = Math.max(0, Math.round(remaining / months));
-
-  const invested = savedTx + state.match_401k_cents;
-  const denom = incomeCents + state.match_401k_cents;
-
-  let planned = state.match_401k_cents;
-  for (const key of savingsKeys) planned += state.budgets[key] ?? 0;
-
-  return {
-    incomeCents,
-    totalOutCents: totalOut,
-    savedTxCents: savedTx,
-    spendCents: totalOut - savedTx,
-    investedCents: invested,
-    surplusCents: incomeCents - totalOut,
-    savingsRate: denom > 0 ? invested / denom : 0,
-    spentByCategory,
-    netWorthTotalCents: netWorthTotal,
-    targetMonthlyCents: target,
-    plannedContribCents: planned,
-    onTrackDeltaCents: invested - target,
-    projections: {
-      none: futureValue(netWorthTotal, planned, months, 0),
-      realistic: futureValue(netWorthTotal, planned, months, 0.07),
-      optimistic: futureValue(netWorthTotal, planned, months, 0.1),
-    },
-  };
-};
+export const project = (
+  netWorthCents: number,
+  monthlyCents: number,
+  months: number
+): Projections => ({
+  none: futureValue(netWorthCents, monthlyCents, months, 0),
+  realistic: futureValue(netWorthCents, monthlyCents, months, 0.07),
+  optimistic: futureValue(netWorthCents, monthlyCents, months, 0.1),
+});
 
 // ── store ────────────────────────────────────────────────────────────────────
 
@@ -166,12 +146,7 @@ export function createBudgetStore() {
     setToken("");
   };
 
-  /**
-   * Runs an API call. A 401 kicks back to the password gate; any other
-   * failure surfaces in the banner. The banner clears when the month
-   * resource next loads successfully (see below) — not on any success,
-   * since e.g. the static categories route succeeds even with the DB down.
-   */
+  /** A 401 kicks back to the password gate; anything else shows in the banner. */
   const guard = async <T>(fn: () => Promise<T>): Promise<T> => {
     try {
       return await fn();
@@ -186,12 +161,12 @@ export function createBudgetStore() {
     }
   };
 
-  const [catalog] = createResource<CategoryCatalog | undefined, string>(
+  const [meta] = createResource<Meta | undefined, string>(
     () => token() || undefined,
-    (t) => guard(() => api.categories(t))
+    (t) => guard(() => api.meta(t))
   );
 
-  const [state, { mutate: mutateState, refetch: refetchState }] = createResource<
+  const [state, { refetch: refetchState }] = createResource<
     MonthState | undefined,
     { t: string; m: string }
   >(
@@ -211,59 +186,59 @@ export function createBudgetStore() {
     ({ t }) => guard(() => api.history(t, 24))
   );
 
-  const bumpHistory = () => setHistVersion((v) => v + 1);
-
   /**
-   * Account balances are computed server-side across a account's whole
-   * history, not just what's loaded for the current month — so after any
-   * transaction/transfer/account edit that could shift a balance, pull a
-   * fresh month state in the background to reconcile it. Local optimistic
-   * patches already keep the visible list snappy; this just corrects the
-   * numbers a moment later.
+   * Every balance in the app is a server-side rollup over the account's whole
+   * history, so any write can move numbers that aren't on screen. Rather than
+   * hand-patching local state (which is what made the old store drift), each
+   * mutation just refetches the month — one small request against a tiny DB.
    */
-  const refreshBalances = () => {
-    Promise.resolve(refetchState()).catch(() => undefined);
+  const reload = async () => {
+    setHistVersion((v) => v + 1);
+    await Promise.resolve(refetchState()).catch(() => undefined);
   };
 
-  // category key → group, and the set of net-worth-building categories
-  const groupOf = createMemo<Record<string, string>>(() => {
-    const map: Record<string, string> = {};
-    for (const c of catalog()?.categories ?? []) map[c.key] = c.group;
-    return map;
-  });
+  // ── lookups ──
+  const accounts = createMemo<AccountBalance[]>(() => state()?.accounts ?? []);
+  const activeAccounts = createMemo(() => accounts().filter((a) => !a.archived));
 
-  const savingsKeys = createMemo<Set<string>>(() => {
-    const keys = new Set<string>();
-    for (const c of catalog()?.categories ?? []) {
-      if (c.group === "savings" || c.group === "investments") keys.add(c.key);
+  const accountsByType = (type: AccountType) => activeAccounts().filter((a) => a.type === type);
+
+  const accountById = (id: number): AccountBalance | undefined =>
+    accounts().find((a) => a.id === id);
+
+  const accountName = (id: number): string => accountById(id)?.name ?? "—";
+
+  /** Accounts you'd pick as a payment source, ordered the way you'd reach for them. */
+  const sourceAccounts = createMemo(() => [
+    ...accountsByType("asset"),
+    ...accountsByType("liability"),
+    ...accountsByType("income"),
+    ...accountsByType("equity"),
+  ]);
+
+  /** Accounts money can land in. */
+  const destinationAccounts = createMemo(() => [
+    ...accountsByType("expense"),
+    ...accountsByType("asset"),
+    ...accountsByType("liability"),
+  ]);
+
+  const spentByAccount = createMemo<Record<number, number>>(() => {
+    const out: Record<number, number> = {};
+    for (const a of accounts()) {
+      if (a.type === "expense") out[a.id] = a.change_cents;
     }
-    return keys;
+    return out;
   });
 
-  const incomeKeys = createMemo<Set<string>>(() => {
-    const keys = new Set<string>();
-    for (const c of catalog()?.categories ?? []) {
-      if (c.group === "income") keys.add(c.key);
-    }
-    return keys;
-  });
+  const summary = () => state()?.summary;
+  const goal = () => state()?.goal;
 
-  /**
-   * Income categories store amount_cents negative (money entering, not
-   * leaving) so every existing "just sum the amounts" calculation — account
-   * balances, spend totals — nets correctly with zero special-casing.
-   * This is the one place that translates between what a user types
-   * (always a plain positive-looking dollar figure, same as any expense)
-   * and that storage convention. Self-inverse, so the same function also
-   * converts a stored amount back to its display value.
-   */
-  const signForCategory = (category: string, cents: number): number =>
-    incomeKeys().has(category) ? -cents : cents;
-
-  const metrics = createMemo<Metrics | null>(() => {
-    const s = state();
-    if (!s) return null;
-    return computeMetrics(s, savingsKeys(), incomeKeys());
+  const projections = createMemo<Projections>(() => {
+    const s = summary();
+    if (!s) return { none: 0, realistic: 0, optimistic: 0 };
+    // Project forward using this month's actual net-worth growth as the run rate.
+    return project(s.net_worth_cents, s.net_worth_change_cents, s.months_remaining);
   });
 
   // ── auth ──
@@ -277,168 +252,91 @@ export function createBudgetStore() {
   const goMonth = (delta: number) => setMonth((m) => shiftMonth(m, delta));
   const goToday = () => setMonth(currentMonth());
 
-  // ── transactions ──
-  /** Keeps the list in date-desc, id-desc order after local inserts. */
-  const insertSorted = (list: Transaction[], tx: Transaction): Transaction[] => {
-    const out = [...list];
-    const at = out.findIndex((x) => x.date < tx.date || (x.date === tx.date && x.id < tx.id));
-    if (at === -1) out.push(tx);
-    else out.splice(at, 0, tx);
-    return out;
-  };
-
-  const addTransaction = async (input: Omit<Transaction, "id" | "month">) => {
-    const payload = { ...input, amount_cents: signForCategory(input.category, input.amount_cents) };
+  // ── entries ──
+  const addEntry = async (input: {
+    date: string;
+    description: string;
+    fromId: number;
+    toId: number;
+    amountCents: number;
+  }) => {
     const created = await guard(() =>
-      api.createTransaction(token(), { ...payload, month: payload.date.slice(0, 7) })
+      api.createEntry(token(), {
+        date: input.date,
+        month: input.date.slice(0, 7),
+        description: input.description,
+        splits: splitsFor(input.fromId, input.toId, input.amountCents),
+      })
     );
-    if (created.month === month()) {
-      mutateState((s) => (s ? { ...s, transactions: insertSorted(s.transactions, created) } : s));
-    } else {
-      flash(`Added to ${created.month} (different month)`);
-    }
-    bumpHistory();
-    if (created.account_id) refreshBalances();
+    if (created.month !== month()) flash(`Added to ${created.month}`);
+    await reload();
     return created;
   };
 
-  const updateTransaction = async (tx: Transaction) => {
-    const signedTx = { ...tx, amount_cents: signForCategory(tx.category, tx.amount_cents) };
-    const saved = await guard(() => api.updateTransaction(token(), signedTx));
-    mutateState((s) => {
-      if (!s) return s;
-      const rest = s.transactions.filter((x) => x.id !== saved.id);
-      return {
-        ...s,
-        transactions: saved.month === s.month ? insertSorted(rest, saved) : rest,
-      };
-    });
-    if (saved.month !== month()) flash(`Moved to ${saved.month}`);
-    bumpHistory();
-    refreshBalances(); // old and/or new account may have changed
-  };
-
-  const deleteTransaction = async (id: number) => {
-    await guard(() => api.deleteTransaction(token(), id));
-    mutateState((s) => (s ? { ...s, transactions: s.transactions.filter((x) => x.id !== id) } : s));
-    bumpHistory();
-    refreshBalances();
-  };
-
-  // ── 401k match ──
-  // The employer match never hits a personal account, so unlike income it
-  // stays a manually-entered monthly figure rather than a transaction.
-  const saveMatch401k = async (matchCents: number) => {
-    const s = state();
-    if (!s) return;
-    await guard(() =>
-      api.saveMonth(token(), {
-        month: month(),
-        // income_cents/three_paycheck are legacy fields no longer editable
-        // from the UI (income is now derived from transactions) — resent
-        // unchanged only because the API still expects them together.
-        income_cents: s.income_cents,
-        three_paycheck: s.three_paycheck,
-        match_401k_cents: matchCents,
-      })
+  const updateEntry = async (entry: Entry) => {
+    const saved = await guard(() =>
+      api.updateEntry(token(), { ...entry, month: entry.date.slice(0, 7) })
     );
-    mutateState((prev) => (prev ? { ...prev, match_401k_cents: matchCents } : prev));
-    bumpHistory();
-    flash("401k match saved");
+    if (saved.month !== month()) flash(`Moved to ${saved.month}`);
+    await reload();
   };
 
-  // ── budgets ──
-  const saveBudget = async (category: string, cents: number) => {
-    const m = month();
-    await guard(() => api.saveBudgets(token(), m, { [category]: cents }));
-    mutateState((s) => (s ? { ...s, budgets: { ...s.budgets, [category]: cents } } : s));
-    flash("Budget saved");
-  };
-
-  // ── net worth ──
-  const saveNetWorth = async (nw: NetWorth) => {
-    await guard(() => api.saveNetWorth(token(), nw));
-    mutateState((s) => (s ? { ...s, net_worth: nw } : s));
-    bumpHistory();
-    flash("Net worth saved");
+  const deleteEntry = async (id: number) => {
+    await guard(() => api.deleteEntry(token(), id));
+    await reload();
   };
 
   // ── accounts ──
-  const accounts = createMemo<Account[]>(() => state()?.accounts ?? []);
-  const activeAccounts = createMemo<Account[]>(() => accounts().filter((a) => !a.archived));
+  const createAccount = async (a: Omit<Account, "id">) => {
+    await guard(() => api.createAccount(token(), a));
+    await reload();
+    flash("Account added");
+  };
 
-  /** id → display name ("—" for unassigned/unknown). */
-  const accountName = (id: number): string =>
-    id === 0 ? "—" : (accounts().find((a) => a.id === id)?.name ?? "—");
+  const updateAccount = async (a: Account) => {
+    await guard(() => api.updateAccount(token(), a));
+    await reload();
+    flash("Account saved");
+  };
 
-  const createAccount = async (name: string, kind: Account["kind"], startingBalanceCents = 0) => {
-    const created = await guard(() =>
-      api.createAccount(token(), {
-        name,
-        kind,
-        sort: accounts().length,
-        archived: false,
-        starting_balance_cents: startingBalanceCents,
-        starting_month: month(),
-        balance_cents: startingBalanceCents,
+  /**
+   * Books a starting balance as a real entry against the Opening Balances
+   * equity account, so the ledger balances instead of a number appearing from
+   * nowhere. Amount is what the user reads: cash held, or debt owed.
+   */
+  const setOpeningBalance = async (account: Account, displayCents: number, date: string) => {
+    const equity = accounts().find((a) => a.type === "equity");
+    if (!equity) {
+      flash("No equity account to balance against");
+      return;
+    }
+    const owed = account.type === "liability";
+    await guard(() =>
+      api.createEntry(token(), {
+        date,
+        month: date.slice(0, 7),
+        description: "Opening balance",
+        splits: owed
+          ? splitsFor(account.id, equity.id, displayCents)
+          : splitsFor(equity.id, account.id, displayCents),
       })
     );
-    mutateState((s) => (s ? { ...s, accounts: [...s.accounts, created] } : s));
-    flash("Account added");
-    refreshBalances();
+    await reload();
+    flash("Opening balance recorded");
   };
 
-  const updateAccount = async (account: Account) => {
-    const saved = await guard(() => api.updateAccount(token(), account));
-    mutateState((s) =>
-      s ? { ...s, accounts: s.accounts.map((a) => (a.id === saved.id ? saved : a)) } : s
-    );
-    flash("Account saved");
-    refreshBalances();
+  // ── budgets & goal ──
+  const saveBudget = async (accountId: number, cents: number) => {
+    await guard(() => api.saveBudget(token(), month(), accountId, cents));
+    await reload();
   };
 
-  // ── transfers ──
-  const insertTransferSorted = (list: Transfer[], t: Transfer): Transfer[] => {
-    const out = [...list];
-    const at = out.findIndex((x) => x.date < t.date || (x.date === t.date && x.id < t.id));
-    if (at === -1) out.push(t);
-    else out.splice(at, 0, t);
-    return out;
+  const saveGoal = async (g: Goal) => {
+    await guard(() => api.saveGoal(token(), g));
+    await reload();
+    flash("Goal saved");
   };
 
-  const addTransfer = async (input: Omit<Transfer, "id" | "month">) => {
-    const created = await guard(() =>
-      api.createTransfer(token(), { ...input, month: input.date.slice(0, 7) })
-    );
-    if (created.month === month()) {
-      mutateState((s) => (s ? { ...s, transfers: insertTransferSorted(s.transfers, created) } : s));
-    } else {
-      flash(`Transfer added to ${created.month} (different month)`);
-    }
-    refreshBalances();
-    return created;
-  };
-
-  const updateTransfer = async (transfer: Transfer) => {
-    const saved = await guard(() => api.updateTransfer(token(), transfer));
-    mutateState((s) => {
-      if (!s) return s;
-      const rest = s.transfers.filter((x) => x.id !== saved.id);
-      return {
-        ...s,
-        transfers: saved.month === s.month ? insertTransferSorted(rest, saved) : rest,
-      };
-    });
-    refreshBalances();
-  };
-
-  const deleteTransfer = async (id: number) => {
-    await guard(() => api.deleteTransfer(token(), id));
-    mutateState((s) => (s ? { ...s, transfers: s.transfers.filter((x) => x.id !== id) } : s));
-    refreshBalances();
-  };
-
-  // ── autosuggest ──
   const suggest = (q: string) => guard(() => api.suggest(token(), q)).then((r) => r.suggestions);
 
   return {
@@ -447,13 +345,19 @@ export function createBudgetStore() {
     month,
     setMonth,
     state,
-    catalog,
+    meta,
     history,
-    metrics,
-    groupOf,
-    savingsKeys,
-    incomeKeys,
-    signForCategory,
+    accounts,
+    activeAccounts,
+    accountsByType,
+    accountById,
+    accountName,
+    sourceAccounts,
+    destinationAccounts,
+    spentByAccount,
+    summary,
+    goal,
+    projections,
     toast,
     apiError,
     flash,
@@ -462,20 +366,15 @@ export function createBudgetStore() {
     logout,
     goMonth,
     goToday,
-    addTransaction,
-    updateTransaction,
-    deleteTransaction,
-    saveMatch401k,
-    saveBudget,
-    saveNetWorth,
-    suggest,
-    accounts,
-    activeAccounts,
-    accountName,
+    addEntry,
+    updateEntry,
+    deleteEntry,
     createAccount,
     updateAccount,
-    addTransfer,
-    updateTransfer,
-    deleteTransfer,
+    setOpeningBalance,
+    saveBudget,
+    saveGoal,
+    suggest,
+    reload,
   };
 }

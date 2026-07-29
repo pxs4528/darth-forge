@@ -11,8 +11,8 @@ import (
 	"time"
 )
 
-// BudgetHandler serves the personal budgeting tool. Every route it exposes is
-// wrapped in AdminOnly, so the whole thing is gated on ADMIN_SECRET.
+// BudgetHandler serves the double-entry budgeting tool. Every route it exposes
+// is wrapped in AdminOnly, so the whole thing is gated on ADMIN_SECRET.
 type BudgetHandler struct {
 	logger *logger.Logger
 	conn   *sql.DB // nil when Turso is unconfigured; routes then return 503
@@ -32,7 +32,6 @@ func writeErr(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
 }
 
-// ready guards every handler against a missing database connection.
 func (h *BudgetHandler) ready(w http.ResponseWriter) bool {
 	if h.conn == nil {
 		writeErr(w, http.StatusServiceUnavailable,
@@ -42,7 +41,6 @@ func (h *BudgetHandler) ready(w http.ResponseWriter) bool {
 	return true
 }
 
-// monthOf derives "YYYY-MM" from a "YYYY-MM-DD" date.
 func monthOf(date string) string {
 	if len(date) < 7 {
 		return ""
@@ -50,243 +48,58 @@ func monthOf(date string) string {
 	return date[:7]
 }
 
-// GET /api/admin/budget/categories — the category catalog plus seed defaults.
-func (h *BudgetHandler) HandleCategories(w http.ResponseWriter, r *http.Request) {
+// GET /api/admin/budget/meta — account types, budget groups and defaults.
+func (h *BudgetHandler) HandleMeta(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"categories": db.Categories,
-		"defaults": map[string]int64{
-			"income_cents":                db.DefaultIncomeCents,
-			"three_paycheck_income_cents": db.DefaultThreePayCents,
-			"match_401k_cents":            db.DefaultMatch401kCents,
-			"goal_cents":                  db.DefaultGoalCents,
+		"account_types": []string{
+			db.TypeAsset, db.TypeLiability, db.TypeIncome, db.TypeExpense, db.TypeEquity,
+		},
+		"budget_groups": db.BudgetGroups,
+		"defaults": map[string]interface{}{
+			"goal_cents":   db.DefaultGoalCents,
+			"target_month": db.DefaultTargetMonth,
 		},
 	})
 }
 
-// GET /api/admin/budget/month?m=YYYY-MM — full state for one month.
-// PUT /api/admin/budget/month — update income / paycheck count / 401k match.
+// GET /api/admin/budget/month?m=YYYY-MM — the whole month: accounts with
+// balances, entries, budgets, goal and derived summary.
 func (h *BudgetHandler) HandleMonth(w http.ResponseWriter, r *http.Request) {
 	if !h.ready(w) {
 		return
 	}
-
-	switch r.Method {
-	case http.MethodGet:
-		month := r.URL.Query().Get("m")
-		if month == "" {
-			month = time.Now().Format("2006-01")
-		}
-		if !db.ValidMonth(month) {
-			writeErr(w, http.StatusBadRequest, "invalid month, want YYYY-MM")
-			return
-		}
-		state, err := db.GetMonth(h.conn, month)
-		if err != nil {
-			h.logger.Error("budget", "failed to load month", map[string]interface{}{"month": month, "error": err.Error()})
-			writeErr(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		writeJSON(w, http.StatusOK, state)
-
-	case http.MethodPut:
-		var body struct {
-			Month          string `json:"month"`
-			IncomeCents    int64  `json:"income_cents"`
-			ThreePaycheck  bool   `json:"three_paycheck"`
-			Match401kCents int64  `json:"match_401k_cents"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			writeErr(w, http.StatusBadRequest, "invalid JSON")
-			return
-		}
-		if !db.ValidMonth(body.Month) {
-			writeErr(w, http.StatusBadRequest, "invalid month, want YYYY-MM")
-			return
-		}
-		if body.IncomeCents < 0 || body.Match401kCents < 0 {
-			writeErr(w, http.StatusBadRequest, "amounts must not be negative")
-			return
-		}
-		if err := db.UpdateMonth(h.conn, body.Month, body.IncomeCents, body.ThreePaycheck, body.Match401kCents); err != nil {
-			writeErr(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]string{"message": "saved"})
-
-	default:
-		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
-	}
-}
-
-// PUT /api/admin/budget/budgets — upsert this month's category targets.
-func (h *BudgetHandler) HandleBudgets(w http.ResponseWriter, r *http.Request) {
-	if !h.ready(w) {
-		return
-	}
-	if r.Method != http.MethodPut {
+	if r.Method != http.MethodGet {
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
 
-	var body struct {
-		Month   string           `json:"month"`
-		Budgets map[string]int64 `json:"budgets"`
+	month := r.URL.Query().Get("m")
+	if month == "" {
+		month = time.Now().Format("2006-01")
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid JSON")
-		return
-	}
-	if !db.ValidMonth(body.Month) {
+	if !db.ValidMonth(month) {
 		writeErr(w, http.StatusBadRequest, "invalid month, want YYYY-MM")
 		return
 	}
-	for cat, cents := range body.Budgets {
-		if !db.ValidCategory(cat) {
-			writeErr(w, http.StatusBadRequest, "unknown category: "+cat)
-			return
-		}
-		if cents < 0 {
-			writeErr(w, http.StatusBadRequest, "budget for "+cat+" must not be negative")
-			return
-		}
-	}
-	if err := db.SetBudgets(h.conn, body.Month, body.Budgets); err != nil {
+
+	state, err := db.GetMonth(h.conn, month)
+	if err != nil {
+		h.logger.Error("budget", "failed to load month", map[string]interface{}{
+			"month": month, "error": err.Error(),
+		})
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"message": "saved"})
+	writeJSON(w, http.StatusOK, state)
 }
 
-// PUT /api/admin/budget/networth — upsert the $100k tracker snapshot.
-func (h *BudgetHandler) HandleNetWorth(w http.ResponseWriter, r *http.Request) {
-	if !h.ready(w) {
-		return
-	}
-	if r.Method != http.MethodPut {
-		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-
-	var nw db.NetWorth
-	if err := json.NewDecoder(r.Body).Decode(&nw); err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid JSON")
-		return
-	}
-	if !db.ValidMonth(nw.Month) {
-		writeErr(w, http.StatusBadRequest, "invalid month, want YYYY-MM")
-		return
-	}
-	if nw.MonthsRemaining < 1 {
-		nw.MonthsRemaining = 1
-	}
-	if nw.GoalCents <= 0 {
-		nw.GoalCents = db.DefaultGoalCents
-	}
-	if err := db.SetNetWorth(h.conn, nw); err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]string{"message": "saved"})
-}
-
-// POST   /api/admin/budget/transactions      — create
-// PUT    /api/admin/budget/transactions      — update (id in body)
-// DELETE /api/admin/budget/transactions?id=N — delete
-func (h *BudgetHandler) HandleTransactions(w http.ResponseWriter, r *http.Request) {
-	if !h.ready(w) {
-		return
-	}
-
-	switch r.Method {
-	case http.MethodPost, http.MethodPut:
-		var t db.Transaction
-		if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
-			writeErr(w, http.StatusBadRequest, "invalid JSON")
-			return
-		}
-
-		t.Description = strings.TrimSpace(t.Description)
-		if t.Description == "" {
-			writeErr(w, http.StatusBadRequest, "description is required")
-			return
-		}
-		if len(t.Description) > 200 {
-			t.Description = t.Description[:200]
-		}
-		if _, err := time.Parse("2006-01-02", t.Date); err != nil {
-			writeErr(w, http.StatusBadRequest, "invalid date, want YYYY-MM-DD")
-			return
-		}
-		if !db.ValidCategory(t.Category) {
-			writeErr(w, http.StatusBadRequest, "unknown category: "+t.Category)
-			return
-		}
-		if t.AmountCents == 0 {
-			writeErr(w, http.StatusBadRequest, "amount must not be zero")
-			return
-		}
-		if t.AccountID < 0 {
-			writeErr(w, http.StatusBadRequest, "invalid account")
-			return
-		}
-		if t.AccountID > 0 {
-			ok, err := db.AccountExists(h.conn, t.AccountID)
-			if err != nil {
-				writeErr(w, http.StatusInternalServerError, err.Error())
-				return
-			}
-			if !ok {
-				writeErr(w, http.StatusBadRequest, "unknown account")
-				return
-			}
-		}
-		// The date is authoritative: editing a date moves the transaction.
-		t.Month = monthOf(t.Date)
-
-		if r.Method == http.MethodPost {
-			created, err := db.CreateTransaction(h.conn, t)
-			if err != nil {
-				writeErr(w, http.StatusInternalServerError, err.Error())
-				return
-			}
-			writeJSON(w, http.StatusCreated, created)
-			return
-		}
-
-		if t.ID == 0 {
-			writeErr(w, http.StatusBadRequest, "id is required")
-			return
-		}
-		if err := db.UpdateTransaction(h.conn, t); err != nil {
-			writeErr(w, http.StatusNotFound, err.Error())
-			return
-		}
-		writeJSON(w, http.StatusOK, t)
-
-	case http.MethodDelete:
-		id, err := strconv.ParseInt(r.URL.Query().Get("id"), 10, 64)
-		if err != nil || id <= 0 {
-			writeErr(w, http.StatusBadRequest, "valid id query param is required")
-			return
-		}
-		if err := db.DeleteTransaction(h.conn, id); err != nil {
-			writeErr(w, http.StatusNotFound, err.Error())
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]string{"message": "deleted"})
-
-	default:
-		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
-	}
-}
-
-// GET  /api/admin/budget/accounts — list accounts
-// POST /api/admin/budget/accounts — create account
-// PUT  /api/admin/budget/accounts — rename / reclassify / archive (id in body)
+// GET  /api/admin/budget/accounts — list
+// POST /api/admin/budget/accounts — create
+// PUT  /api/admin/budget/accounts — update (id in body)
 func (h *BudgetHandler) HandleAccounts(w http.ResponseWriter, r *http.Request) {
 	if !h.ready(w) {
 		return
@@ -315,15 +128,9 @@ func (h *BudgetHandler) HandleAccounts(w http.ResponseWriter, r *http.Request) {
 		if len(a.Name) > 60 {
 			a.Name = a.Name[:60]
 		}
-		if !db.ValidAccountKind(a.Kind) {
-			writeErr(w, http.StatusBadRequest, "kind must be checking, savings, credit, investment or other")
-			return
-		}
-		if a.StartingMonth == "" {
-			a.StartingMonth = time.Now().UTC().Format("2006-01")
-		}
-		if !db.ValidMonth(a.StartingMonth) {
-			writeErr(w, http.StatusBadRequest, "starting_month must be YYYY-MM")
+		if !db.ValidAccountType(a.Type) {
+			writeErr(w, http.StatusBadRequest,
+				"type must be asset, liability, income, expense or equity")
 			return
 		}
 
@@ -352,52 +159,55 @@ func (h *BudgetHandler) HandleAccounts(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// POST   /api/admin/budget/transfers      — create
-// PUT    /api/admin/budget/transfers      — update (id in body)
-// DELETE /api/admin/budget/transfers?id=N — delete
-func (h *BudgetHandler) HandleTransfers(w http.ResponseWriter, r *http.Request) {
+// POST   /api/admin/budget/entries      — create
+// PUT    /api/admin/budget/entries      — update (id in body)
+// DELETE /api/admin/budget/entries?id=N — delete
+func (h *BudgetHandler) HandleEntries(w http.ResponseWriter, r *http.Request) {
 	if !h.ready(w) {
 		return
 	}
 
 	switch r.Method {
 	case http.MethodPost, http.MethodPut:
-		var t db.Transfer
-		if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
+		var e db.Entry
+		if err := json.NewDecoder(r.Body).Decode(&e); err != nil {
 			writeErr(w, http.StatusBadRequest, "invalid JSON")
 			return
 		}
-		if _, err := time.Parse("2006-01-02", t.Date); err != nil {
+
+		e.Description = strings.TrimSpace(e.Description)
+		if e.Description == "" {
+			writeErr(w, http.StatusBadRequest, "description is required")
+			return
+		}
+		if len(e.Description) > 200 {
+			e.Description = e.Description[:200]
+		}
+		if _, err := time.Parse("2006-01-02", e.Date); err != nil {
 			writeErr(w, http.StatusBadRequest, "invalid date, want YYYY-MM-DD")
 			return
 		}
-		if t.AmountCents <= 0 {
-			writeErr(w, http.StatusBadRequest, "amount must be positive")
+		// The date is authoritative: editing a date moves the entry.
+		e.Month = monthOf(e.Date)
+
+		if err := db.ValidateSplits(e.Splits); err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		if t.FromAccount == t.ToAccount {
-			writeErr(w, http.StatusBadRequest, "from and to must differ")
-			return
-		}
-		for _, id := range []int64{t.FromAccount, t.ToAccount} {
-			ok, err := db.AccountExists(h.conn, id)
+		for _, s := range e.Splits {
+			ok, err := db.AccountExists(h.conn, s.AccountID)
 			if err != nil {
 				writeErr(w, http.StatusInternalServerError, err.Error())
 				return
 			}
 			if !ok {
-				writeErr(w, http.StatusBadRequest, "unknown account")
+				writeErr(w, http.StatusBadRequest, "unknown account in split")
 				return
 			}
 		}
-		t.Note = strings.TrimSpace(t.Note)
-		if len(t.Note) > 200 {
-			t.Note = t.Note[:200]
-		}
-		t.Month = monthOf(t.Date)
 
 		if r.Method == http.MethodPost {
-			created, err := db.CreateTransfer(h.conn, t)
+			created, err := db.CreateEntry(h.conn, e)
 			if err != nil {
 				writeErr(w, http.StatusInternalServerError, err.Error())
 				return
@@ -406,15 +216,15 @@ func (h *BudgetHandler) HandleTransfers(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 
-		if t.ID == 0 {
+		if e.ID == 0 {
 			writeErr(w, http.StatusBadRequest, "id is required")
 			return
 		}
-		if err := db.UpdateTransfer(h.conn, t); err != nil {
+		if err := db.UpdateEntry(h.conn, e); err != nil {
 			writeErr(w, http.StatusNotFound, err.Error())
 			return
 		}
-		writeJSON(w, http.StatusOK, t)
+		writeJSON(w, http.StatusOK, e)
 
 	case http.MethodDelete:
 		id, err := strconv.ParseInt(r.URL.Query().Get("id"), 10, 64)
@@ -422,7 +232,7 @@ func (h *BudgetHandler) HandleTransfers(w http.ResponseWriter, r *http.Request) 
 			writeErr(w, http.StatusBadRequest, "valid id query param is required")
 			return
 		}
-		if err := db.DeleteTransfer(h.conn, id); err != nil {
+		if err := db.DeleteEntry(h.conn, id); err != nil {
 			writeErr(w, http.StatusNotFound, err.Error())
 			return
 		}
@@ -433,7 +243,71 @@ func (h *BudgetHandler) HandleTransfers(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
-// GET /api/admin/budget/history?limit=24 — monthly rollups for the charts.
+// PUT /api/admin/budget/budgets — set one account's monthly target.
+func (h *BudgetHandler) HandleBudgets(w http.ResponseWriter, r *http.Request) {
+	if !h.ready(w) {
+		return
+	}
+	if r.Method != http.MethodPut {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	var body struct {
+		Month       string `json:"month"`
+		AccountID   int64  `json:"account_id"`
+		AmountCents int64  `json:"amount_cents"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if !db.ValidMonth(body.Month) {
+		writeErr(w, http.StatusBadRequest, "invalid month, want YYYY-MM")
+		return
+	}
+	if body.AmountCents < 0 {
+		writeErr(w, http.StatusBadRequest, "budget must not be negative")
+		return
+	}
+	if err := db.SetBudget(h.conn, body.Month, body.AccountID, body.AmountCents); err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"message": "saved"})
+}
+
+// PUT /api/admin/budget/goal — target amount and date.
+func (h *BudgetHandler) HandleGoal(w http.ResponseWriter, r *http.Request) {
+	if !h.ready(w) {
+		return
+	}
+	if r.Method != http.MethodPut {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	var g db.Goal
+	if err := json.NewDecoder(r.Body).Decode(&g); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if g.GoalCents <= 0 {
+		writeErr(w, http.StatusBadRequest, "goal must be positive")
+		return
+	}
+	if !db.ValidMonth(g.TargetMonth) {
+		writeErr(w, http.StatusBadRequest, "target_month must be YYYY-MM")
+		return
+	}
+	if err := db.SetGoal(h.conn, g); err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, g)
+}
+
+// GET /api/admin/budget/history?limit=24
 func (h *BudgetHandler) HandleHistory(w http.ResponseWriter, r *http.Request) {
 	if !h.ready(w) {
 		return
@@ -457,9 +331,8 @@ func (h *BudgetHandler) HandleHistory(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{"history": points})
 }
 
-// GET /api/admin/budget/dump — full SQL dump of the budget database.
-// Routed behind AdminOrBackupToken (session or dedicated backup token).
-func (h *BudgetHandler) HandleDump(w http.ResponseWriter, r *http.Request) {
+// GET /api/admin/budget/register?account=N — one account's ledger.
+func (h *BudgetHandler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 	if !h.ready(w) {
 		return
 	}
@@ -468,17 +341,20 @@ func (h *BudgetHandler) HandleDump(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	filename := "budget-" + time.Now().UTC().Format("2006-01-02") + ".sql"
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
-
-	if err := db.Dump(h.conn, w); err != nil {
-		// headers are already sent; log and truncate rather than half-lie
-		h.logger.Error("budget", "dump failed", map[string]interface{}{"error": err.Error()})
+	id, err := strconv.ParseInt(r.URL.Query().Get("account"), 10, 64)
+	if err != nil || id <= 0 {
+		writeErr(w, http.StatusBadRequest, "valid account query param is required")
+		return
 	}
+	rows, err := db.Register(h.conn, id, 200)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"rows": rows})
 }
 
-// GET /api/admin/budget/suggest?q=heb — past descriptions and their usual category.
+// GET /api/admin/budget/suggest?q=heb
 func (h *BudgetHandler) HandleSuggest(w http.ResponseWriter, r *http.Request) {
 	if !h.ready(w) {
 		return
@@ -494,4 +370,23 @@ func (h *BudgetHandler) HandleSuggest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"suggestions": suggestions})
+}
+
+// GET /api/admin/budget/dump — full SQL dump (session or backup token).
+func (h *BudgetHandler) HandleDump(w http.ResponseWriter, r *http.Request) {
+	if !h.ready(w) {
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	filename := "budget-" + time.Now().UTC().Format("2006-01-02") + ".sql"
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
+
+	if err := db.Dump(h.conn, w); err != nil {
+		h.logger.Error("budget", "dump failed", map[string]interface{}{"error": err.Error()})
+	}
 }

@@ -71,8 +71,7 @@ const LegendDot: Component<{ color: string; label: string }> = (p) => (
 
 const SERIES = [
   { key: "income_cents" as const, label: "Income", color: CHART_COLORS.income },
-  { key: "spent_cents" as const, label: "Spent", color: CHART_COLORS.spent },
-  { key: "saved_cents" as const, label: "Saved", color: CHART_COLORS.saved },
+  { key: "expense_cents" as const, label: "Spent", color: CHART_COLORS.expense },
 ];
 
 const CashflowChart: Component<{ points: HistoryPoint[] }> = (props) => {
@@ -80,7 +79,7 @@ const CashflowChart: Component<{ points: HistoryPoint[] }> = (props) => {
 
   const pts = createMemo(() => props.points.slice(-12));
   const yMax = createMemo(() =>
-    niceMax(Math.max(1, ...pts().flatMap((p) => [p.income_cents, p.spent_cents, p.saved_cents])))
+    niceMax(Math.max(1, ...pts().flatMap((p) => [p.income_cents, p.expense_cents])))
   );
   const y = (v: number) => M.t + PLOT_H - (v / yMax()) * PLOT_H;
   const band = () => PLOT_W / Math.max(1, pts().length);
@@ -178,7 +177,7 @@ const CashflowChart: Component<{ points: HistoryPoint[] }> = (props) => {
                     height={PLOT_H}
                     fill="transparent"
                     tabindex="0"
-                    aria-label={`${p().month}: income ${money(p().income_cents)}, spent ${money(p().spent_cents)}, saved ${money(p().saved_cents)}`}
+                    aria-label={`${p().month}: income ${money(p().income_cents)}, spent ${money(p().expense_cents)}`}
                     onMouseEnter={() => showTip(p(), i)}
                     onFocus={() => showTip(p(), i)}
                     onBlur={() => setTip(null)}
@@ -414,12 +413,12 @@ const Charts: Component<{ store: BudgetStore }> = (props) => {
   return (
     <section class="bg-[#0d1117] border border-[#30363d] rounded-lg p-4 space-y-6">
       <CashflowChart points={history()} />
-      <Show when={store.state()}>
+      <Show when={store.goal() && store.summary()}>
         <NetWorthChart
           points={history()}
-          goalCents={store.state()!.net_worth.goal_cents}
-          monthsRemaining={store.state()!.net_worth.months_remaining}
-          projectedCents={store.metrics()?.projections.realistic ?? 0}
+          goalCents={store.goal()!.goal_cents}
+          monthsRemaining={store.summary()!.months_remaining}
+          projectedCents={store.projections().realistic}
         />
       </Show>
     </section>

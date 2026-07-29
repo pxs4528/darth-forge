@@ -1,61 +1,64 @@
 import type { MonthState } from "./api";
-import type { Metrics } from "./store";
+import { simpleShape } from "./store";
 
-// CSV export of the current month: summary block, budget-vs-actual per
-// category, then every transaction. Downloads via a Blob link — no server.
+// CSV export of the month: summary, balance sheet, budget-vs-actual, then
+// every entry in from → to form. Downloads via a Blob link — no server.
 
 const esc = (v: string): string => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
 const usd = (cents: number): string => (cents / 100).toFixed(2);
 
-export const buildCsv = (
-  state: MonthState,
-  metrics: Metrics,
-  labelOf: (key: string) => string,
-  accountName: (id: number) => string
-): string => {
+export const buildCsv = (state: MonthState, accountName: (id: number) => string): string => {
   const lines: string[] = [];
+  const s = state.summary;
 
   lines.push(`Budget export,${state.month}`);
   lines.push("");
   lines.push("Summary,USD");
-  lines.push(`Income,${usd(metrics.incomeCents)}`);
-  lines.push(`401k match,${usd(state.match_401k_cents)}`);
-  lines.push(`Total outflows,${usd(metrics.totalOutCents)}`);
-  lines.push(`Spending (excl. savings),${usd(metrics.spendCents)}`);
-  lines.push(`To savings/investments,${usd(metrics.savedTxCents)}`);
-  lines.push(`Surplus,${usd(metrics.surplusCents)}`);
-  lines.push(`Savings rate,${(metrics.savingsRate * 100).toFixed(1)}%`);
-  lines.push(`Net worth,${usd(metrics.netWorthTotalCents)}`);
-  lines.push(`Monthly target,${usd(metrics.targetMonthlyCents)}`);
+  lines.push(`Income,${usd(s.income_cents)}`);
+  lines.push(`Spending,${usd(s.expense_cents)}`);
+  lines.push(`Surplus,${usd(s.surplus_cents)}`);
+  lines.push(`Net worth,${usd(s.net_worth_cents)}`);
+  lines.push(`Net worth change,${usd(s.net_worth_change_cents)}`);
+  lines.push(`Goal,${usd(state.goal.goal_cents)}`);
+  lines.push(`Target month,${state.goal.target_month}`);
+  lines.push(`Needed per month,${usd(s.target_monthly_cents)}`);
   lines.push("");
 
-  lines.push("Category,Budgeted,Spent,Remaining");
-  for (const [key, budget] of Object.entries(state.budgets)) {
-    const spent = metrics.spentByCategory[key] ?? 0;
-    lines.push(`${esc(labelOf(key))},${usd(budget)},${usd(spent)},${usd(budget - spent)}`);
+  lines.push("Account,Type,Balance,Change this month");
+  for (const a of state.accounts) {
+    if (a.archived) continue;
+    if (a.type !== "asset" && a.type !== "liability") continue;
+    lines.push(`${esc(a.name)},${a.type},${usd(a.balance_cents)},${usd(a.change_cents)}`);
   }
   lines.push("");
 
-  lines.push("Date,Description,Amount,Category,Account");
-  // oldest first reads naturally in a spreadsheet
-  for (const tx of [...state.transactions].reverse()) {
+  lines.push("Expense account,Budgeted,Spent,Remaining");
+  for (const a of state.accounts) {
+    if (a.archived || a.type !== "expense") continue;
+    const budget = state.budgets[String(a.id)] ?? 0;
     lines.push(
-      `${tx.date},${esc(tx.description)},${usd(tx.amount_cents)},${esc(labelOf(tx.category))},${esc(
-        tx.account_id ? accountName(tx.account_id) : ""
-      )}`
+      `${esc(a.name)},${usd(budget)},${usd(a.change_cents)},${usd(budget - a.change_cents)}`
     );
   }
+  lines.push("");
 
-  if (state.transfers.length > 0) {
-    lines.push("");
-    lines.push("Transfers");
-    lines.push("Date,From,To,Amount,Note");
-    for (const t of [...state.transfers].reverse()) {
+  lines.push("Date,Description,Amount,From,To");
+  // oldest first reads naturally in a spreadsheet
+  for (const entry of [...state.entries].reverse()) {
+    const shape = simpleShape(entry);
+    if (shape) {
       lines.push(
-        `${t.date},${esc(accountName(t.from_account))},${esc(accountName(t.to_account))},${usd(
-          t.amount_cents
-        )},${esc(t.note)}`
+        `${entry.date},${esc(entry.description)},${usd(shape.amountCents)},` +
+          `${esc(accountName(shape.fromId))},${esc(accountName(shape.toId))}`
       );
+    } else {
+      // Multi-split entries can't collapse to from/to; emit one line per split.
+      for (const split of entry.splits) {
+        lines.push(
+          `${entry.date},${esc(entry.description)},${usd(split.amount_cents)},` +
+            `${esc(accountName(split.account_id))},`
+        );
+      }
     }
   }
 

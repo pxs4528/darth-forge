@@ -1,18 +1,18 @@
 import { createSignal, onCleanup, onMount, Show, type Component } from "solid-js";
 import { navigate } from "../lib/router";
+import Accounts from "./Accounts";
+import { api } from "./api";
 import Charts from "./Charts";
 import Dashboard from "./Dashboard";
 import EntryForm from "./EntryForm";
-import { api } from "./api";
 import { buildCsv, downloadCsv } from "./export";
-import { money, monthLabel, moneyShort, parseCents } from "./format";
+import { monthLabel } from "./format";
+import Ledger from "./Ledger";
 import { createBudgetStore } from "./store";
 import Tracker from "./Tracker";
-import Transfers from "./Transfers";
-import TxList from "./TxList";
 
-// /budget — full-page personal budgeting tool, gated on the site's existing
-// admin password. Keyboard-first: press ? for the shortcut list.
+// /budget — double-entry bookkeeping, gated on the site's admin password.
+// Keyboard-first: press ? for the shortcut list.
 
 const BudgetPage: Component = () => {
   const store = createBudgetStore();
@@ -23,11 +23,8 @@ const BudgetPage: Component = () => {
 
   const exportMonth = () => {
     const s = store.state();
-    const m = store.metrics();
-    if (!s || !m) return;
-    const labelOf = (key: string) =>
-      store.catalog()?.categories.find((c) => c.key === key)?.label ?? key;
-    downloadCsv(`budget-${s.month}.csv`, buildCsv(s, m, labelOf, store.accountName));
+    if (!s) return;
+    downloadCsv(`budget-${s.month}.csv`, buildCsv(s, store.accountName));
     store.flash(`Exported budget-${s.month}.csv`);
   };
 
@@ -90,15 +87,53 @@ const BudgetPage: Component = () => {
     });
   });
 
+  const btn =
+    "px-2.5 py-1.5 text-xs rounded border border-[#30363d] text-gray-300 hover:bg-[#21262d]";
+
   return (
-    <div class="min-h-screen bg-black text-white" style={{ "color-scheme": "dark" }}>
+    <div class="budget-app min-h-screen bg-black text-white" style={{ "color-scheme": "dark" }}>
       <Show when={store.token()} fallback={<AuthGate store={store} />}>
-        <Header
-          store={store}
-          onExport={exportMonth}
-          onBackup={backupDb}
-          onHelp={() => setShowHelp(true)}
-        />
+        <header class="border-b border-[#21262d] bg-[#0d1117]">
+          <div class="max-w-6xl mx-auto px-3 sm:px-4 py-3 flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => navigate("/")}
+              class="text-gray-500 hover:text-white text-sm"
+              aria-label="Back to portfolio">
+              ‹ site
+            </button>
+            <h1 class="text-sm font-semibold text-white mr-2">budget</h1>
+
+            <div class="flex items-center gap-1">
+              <button onClick={() => store.goMonth(-1)} class={btn} aria-label="Previous month">
+                ‹
+              </button>
+              <span class="text-sm text-white font-semibold w-32 text-center tabular-nums">
+                {monthLabel(store.month())}
+              </span>
+              <button onClick={() => store.goMonth(1)} class={btn} aria-label="Next month">
+                ›
+              </button>
+              <button onClick={store.goToday} class={btn}>
+                today
+              </button>
+            </div>
+
+            <div class="flex items-center gap-2 ml-auto">
+              <button onClick={exportMonth} class={btn}>
+                export csv
+              </button>
+              <button onClick={backupDb} class={btn} title="Download full SQL backup">
+                backup
+              </button>
+              <button onClick={() => setShowHelp(true)} class={btn} aria-label="Keyboard shortcuts">
+                ?
+              </button>
+              <button onClick={store.logout} class={btn}>
+                lock
+              </button>
+            </div>
+          </div>
+        </header>
 
         {/* Surface API failures (e.g. Turso not configured yet → 503) */}
         <Show when={store.apiError()}>
@@ -109,34 +144,31 @@ const BudgetPage: Component = () => {
           </div>
         </Show>
 
-        {/* Compact tracker strip — keeps the goal visible on small screens */}
-        <Show when={store.metrics()}>
+        {/* Compact goal strip on small screens, where the sidebar wraps below */}
+        <Show when={store.summary()}>
           <div class="lg:hidden max-w-6xl mx-auto px-3 pt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-400">
             <span>
-              NW{" "}
-              <span class="text-white font-bold tabular-nums">
-                {moneyShort(store.metrics()!.netWorthTotalCents)}
+              net worth{" "}
+              <span class="text-white font-semibold tabular-nums">
+                ${Math.round(store.summary()!.net_worth_cents / 100).toLocaleString("en-US")}
               </span>
             </span>
             <span>
               need{" "}
-              <span class="text-white font-bold tabular-nums">
-                {moneyShort(store.metrics()!.targetMonthlyCents)}/mo
+              <span class="text-white font-semibold tabular-nums">
+                ${Math.round(store.summary()!.target_monthly_cents / 100).toLocaleString("en-US")}
+                /mo
               </span>
-            </span>
-            <span
-              style={{ color: store.metrics()!.onTrackDeltaCents >= 0 ? "#3fb950" : "#f85149" }}>
-              {store.metrics()!.onTrackDeltaCents >= 0 ? "✓ on track" : "✗ behind"}
             </span>
           </div>
         </Show>
 
         <main class="max-w-6xl mx-auto px-3 sm:px-4 py-4 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_20.5rem] gap-4 items-start">
           <div class="space-y-4 min-w-0">
-            <Dashboard store={store} />
             <EntryForm store={store} registerFocus={registerFocus} />
-            <TxList store={store} />
-            <Transfers store={store} />
+            <Ledger store={store} />
+            <Accounts store={store} />
+            <Dashboard store={store} />
             <Charts store={store} />
           </div>
           <Tracker store={store} />
@@ -158,16 +190,16 @@ const BudgetPage: Component = () => {
           <div
             class="bg-[#0d1117] border border-[#30363d] rounded-lg p-5 w-full max-w-sm"
             onClick={(e) => e.stopPropagation()}>
-            <h2 class="text-sm font-bold text-white mb-3">Keyboard shortcuts</h2>
+            <h2 class="text-sm font-semibold text-white mb-3">Keyboard shortcuts</h2>
             <dl class="space-y-1.5 text-sm">
               {(
                 [
-                  ["n", "New transaction (focus entry)"],
+                  ["n", "New entry (focus description)"],
                   ["[ / ]", "Previous / next month"],
-                  ["j / k", "Select transaction below / above"],
-                  ["e", "Edit selected transaction"],
+                  ["j / k", "Select entry below / above"],
+                  ["e", "Edit selected entry"],
                   ["x x", "Delete selected (press twice)"],
-                  ["t", "Jump to $100k tracker"],
+                  ["t", "Jump to goal tracker"],
                   ["Enter", "Submit form / save edit"],
                   ["Esc", "Close / cancel / unfocus"],
                   ["?", "Toggle this help"],
@@ -210,7 +242,7 @@ const AuthGate: Component<{ store: ReturnType<typeof createBudgetStore> }> = (pr
   return (
     <div class="min-h-screen flex items-center justify-center px-4">
       <div class="w-full max-w-xs bg-[#0d1117] border border-[#30363d] rounded-lg p-6">
-        <h1 class="text-lg font-bold text-white">budget</h1>
+        <h1 class="text-lg font-semibold text-white">budget</h1>
         <p class="text-xs text-gray-500 mt-1 mb-4">Admin password required.</p>
         <input
           type="password"
@@ -233,7 +265,7 @@ const AuthGate: Component<{ store: ReturnType<typeof createBudgetStore> }> = (pr
         <button
           onClick={submit}
           disabled={busy() || !password()}
-          class="mt-4 w-full py-2 text-sm font-bold rounded bg-[#238636] text-white hover:bg-[#2ea043] disabled:opacity-50">
+          class="mt-4 w-full py-2 text-sm font-semibold rounded bg-[#238636] text-white hover:bg-[#2ea043] disabled:opacity-50">
           {busy() ? "…" : "Unlock"}
         </button>
         <Show when={error()}>
@@ -246,111 +278,6 @@ const AuthGate: Component<{ store: ReturnType<typeof createBudgetStore> }> = (pr
         </button>
       </div>
     </div>
-  );
-};
-
-// ── header ───────────────────────────────────────────────────────────────────
-
-const Header: Component<{
-  store: ReturnType<typeof createBudgetStore>;
-  onExport: () => void;
-  onBackup: () => void;
-  onHelp: () => void;
-}> = (props) => {
-  const { store } = props;
-  const [editingMatch, setEditingMatch] = createSignal(false);
-  const [matchDraft, setMatchDraft] = createSignal("");
-
-  const commitMatch = async () => {
-    const s = store.state();
-    setEditingMatch(false);
-    if (!s) return;
-    const cents = parseCents(matchDraft());
-    if (cents === null || cents < 0 || cents === s.match_401k_cents) return;
-    try {
-      await store.saveMatch401k(cents);
-    } catch (e) {
-      store.flash(e instanceof Error ? e.message : "Failed to save 401k match");
-    }
-  };
-
-  const btn =
-    "px-2.5 py-1.5 text-xs rounded border border-[#30363d] text-gray-300 hover:bg-[#21262d]";
-
-  return (
-    <header class="border-b border-[#21262d] bg-[#0d1117]">
-      <div class="max-w-6xl mx-auto px-3 sm:px-4 py-3 flex flex-wrap items-center gap-2">
-        <button
-          onClick={() => navigate("/")}
-          class="text-gray-500 hover:text-white text-sm"
-          aria-label="Back to portfolio">
-          ‹ site
-        </button>
-        <h1 class="text-sm font-bold text-white mr-2">budget</h1>
-
-        {/* month nav */}
-        <div class="flex items-center gap-1">
-          <button onClick={() => store.goMonth(-1)} class={btn} aria-label="Previous month">
-            ‹
-          </button>
-          <span class="text-sm text-white font-bold w-32 text-center tabular-nums">
-            {monthLabel(store.month())}
-          </span>
-          <button onClick={() => store.goMonth(1)} class={btn} aria-label="Next month">
-            ›
-          </button>
-          <button onClick={store.goToday} class={btn}>
-            today
-          </button>
-        </div>
-
-        <div class="flex items-center gap-2 ml-auto">
-          {/* 401k match (editable) — income now comes from logged paycheck transactions */}
-          <Show when={store.state()}>
-            <Show
-              when={editingMatch()}
-              fallback={
-                <button
-                  onClick={() => {
-                    setMatchDraft(((store.state()!.match_401k_cents ?? 0) / 100).toFixed(2));
-                    setEditingMatch(true);
-                  }}
-                  class={btn + " tabular-nums"}
-                  title="Click to edit this month's employer 401k match">
-                  401k match {money(store.state()!.match_401k_cents)}
-                </button>
-              }>
-              <input
-                type="text"
-                inputmode="decimal"
-                value={matchDraft()}
-                ref={(el) => setTimeout(() => el.focus())}
-                onInput={(e) => setMatchDraft(e.currentTarget.value)}
-                onBlur={commitMatch}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") commitMatch();
-                  if (e.key === "Escape") setEditingMatch(false);
-                }}
-                class="w-28 bg-[#161b22] border border-[#3987e5] rounded px-2 py-1.5 text-xs text-right tabular-nums text-white outline-none"
-              />
-            </Show>
-          </Show>
-
-          <button onClick={props.onExport} class={btn}>
-            export csv
-          </button>
-          <button onClick={props.onBackup} class={btn} title="Download full SQL backup">
-            backup
-          </button>
-          <button onClick={props.onHelp} class={btn} aria-label="Keyboard shortcuts">
-            ?
-          </button>
-          <button onClick={store.logout} class={btn}>
-            lock
-          </button>
-        </div>
-      </div>
-    </header>
   );
 };
 

@@ -60,7 +60,43 @@ Recreating the backend picks up the new value and (because sessions are
 in-memory) instantly signs out every device. Locally it's
 `$env:ADMIN_SECRET = '...'` before `npm run dev`.
 
-## Accounts & transfers
+## How the books work (double-entry)
+
+Every movement of money is one **entry** made of **splits** that sum to zero:
+money leaves one account and arrives in another. There is no separate
+"category" or "transfer" concept — a category *is* an account.
+
+| Account type | Balance means | Examples |
+|---|---|---|
+| asset | cash you hold | Checking, HYSA, Brokerage, 401k |
+| liability | debt you owe | Discover Credit, Chase Credit |
+| income | money earned | Paycheck, 401k Match, Reimbursement |
+| expense | money spent | Rent, Groceries, Gas |
+| equity | opening balances | Opening Balances |
+
+Everything is the same From → To shape:
+
+| Situation | From | To |
+|---|---|---|
+| Paycheck lands | Paycheck | Checking |
+| Buy groceries on a card | Discover Credit | Groceries |
+| Pay the card off | Checking | Discover Credit |
+| Move money to savings | Checking | HYSA |
+| Friend repays you | Other Income | Checking |
+| Lend a friend money | Checking | *(asset account "Owed by X")* |
+| Starting balance | Opening Balances | Checking |
+
+**Net worth is never typed in.** It is `SUM(balance)` over asset and liability
+accounts; because debt is stored negative it subtracts itself. That's what
+makes the goal tracker reconcile with reality: it's the same number the ledger
+produces, not a figure kept in sync by hand.
+
+Lending money is worth calling out: create an asset account for the
+receivable, and moving cash into it leaves net worth unchanged (you swapped
+cash for a claim) — which is correct, and something the old model couldn't
+express.
+
+## Accounts & transfers (legacy note)
 
 Accounts (checking, credit cards, HYSA, brokerage — manageable in the UI via
 "manage accounts") attribute where each expense hit. Transfers move money
