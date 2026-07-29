@@ -258,19 +258,19 @@ const Header: Component<{
   onHelp: () => void;
 }> = (props) => {
   const { store } = props;
-  const [editingIncome, setEditingIncome] = createSignal(false);
-  const [incomeDraft, setIncomeDraft] = createSignal("");
+  const [editingMatch, setEditingMatch] = createSignal(false);
+  const [matchDraft, setMatchDraft] = createSignal("");
 
-  const commitIncome = async () => {
+  const commitMatch = async () => {
     const s = store.state();
-    setEditingIncome(false);
+    setEditingMatch(false);
     if (!s) return;
-    const cents = parseCents(incomeDraft());
-    if (cents === null || cents < 0 || cents === s.income_cents) return;
+    const cents = parseCents(matchDraft());
+    if (cents === null || cents < 0 || cents === s.match_401k_cents) return;
     try {
-      await store.saveMonthSettings(cents, s.three_paycheck, s.match_401k_cents);
+      await store.saveMatch401k(cents);
     } catch (e) {
-      store.flash(e instanceof Error ? e.message : "Failed to save income");
+      store.flash(e instanceof Error ? e.message : "Failed to save 401k match");
     }
   };
 
@@ -305,52 +305,35 @@ const Header: Component<{
         </div>
 
         <div class="flex items-center gap-2 ml-auto">
-          {/* income (editable) + 3-paycheck toggle */}
+          {/* 401k match (editable) — income now comes from logged paycheck transactions */}
           <Show when={store.state()}>
             <Show
-              when={editingIncome()}
+              when={editingMatch()}
               fallback={
                 <button
                   onClick={() => {
-                    setIncomeDraft(((store.state()!.income_cents ?? 0) / 100).toFixed(2));
-                    setEditingIncome(true);
+                    setMatchDraft(((store.state()!.match_401k_cents ?? 0) / 100).toFixed(2));
+                    setEditingMatch(true);
                   }}
                   class={btn + " tabular-nums"}
-                  title="Click to edit this month's income">
-                  income {money(store.state()!.income_cents)}
+                  title="Click to edit this month's employer 401k match">
+                  401k match {money(store.state()!.match_401k_cents)}
                 </button>
               }>
               <input
                 type="text"
                 inputmode="decimal"
-                value={incomeDraft()}
+                value={matchDraft()}
                 ref={(el) => setTimeout(() => el.focus())}
-                onInput={(e) => setIncomeDraft(e.currentTarget.value)}
-                onBlur={commitIncome}
+                onInput={(e) => setMatchDraft(e.currentTarget.value)}
+                onBlur={commitMatch}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") commitIncome();
-                  if (e.key === "Escape") setEditingIncome(false);
+                  if (e.key === "Enter") commitMatch();
+                  if (e.key === "Escape") setEditingMatch(false);
                 }}
                 class="w-28 bg-[#161b22] border border-[#3987e5] rounded px-2 py-1.5 text-xs text-right tabular-nums text-white outline-none"
               />
             </Show>
-            <label
-              class={btn + " flex items-center gap-1.5 cursor-pointer select-none"}
-              title="Three-paycheck month">
-              <input
-                type="checkbox"
-                checked={store.state()!.three_paycheck}
-                onChange={(e) =>
-                  store
-                    .setThreePaycheck(e.currentTarget.checked)
-                    .catch((err) =>
-                      store.flash(err instanceof Error ? err.message : "Failed to save")
-                    )
-                }
-                class="accent-[#3987e5]"
-              />
-              3-pay
-            </label>
           </Show>
 
           <button onClick={props.onExport} class={btn}>

@@ -50,7 +50,9 @@ const TxList: Component<Props> = (props) => {
     setEditingId(tx.id);
     setEDate(tx.date);
     setEDesc(tx.description);
-    setEAmount((tx.amount_cents / 100).toFixed(2));
+    // signForCategory is self-inverse: converts the stored (income = negative)
+    // amount back to the plain positive-looking figure the user originally typed.
+    setEAmount((store.signForCategory(tx.category, tx.amount_cents) / 100).toFixed(2));
     setECategory(tx.category);
     setEAccount(tx.account_id);
     setEError("");

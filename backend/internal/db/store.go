@@ -475,24 +475,33 @@ func History(conn *sql.DB, limit int) ([]HistoryPoint, error) {
 		limit = 24
 	}
 
+	incomePlaceholders := strings.TrimSuffix(strings.Repeat("?,", len(IncomeCategories)), ",")
 	savingsPlaceholders := strings.TrimSuffix(strings.Repeat("?,", len(SavingsCategories)), ",")
-	args := make([]interface{}, 0, len(SavingsCategories)+1)
+	args := make([]interface{}, 0, len(IncomeCategories)+len(SavingsCategories)+1)
+	for _, c := range IncomeCategories {
+		args = append(args, c)
+	}
 	for _, c := range SavingsCategories {
 		args = append(args, c)
 	}
 	args = append(args, limit)
 
-	// One query: months joined to their transaction rollup and net-worth snapshot.
+	// Income is derived from income-category transactions (stored negative —
+	// payroll is logged as a transaction, not a manually-typed figure), never
+	// from months.income_cents. "spent" is total minus income's (negative)
+	// contribution, so a paycheck deposit never nets against real outflows —
+	// see the comment on IncomeCategories.
 	query := `
 		SELECT m.month,
-		       m.income_cents,
-		       COALESCE(t.spent, 0),
+		       COALESCE(t.income, 0),
+		       COALESCE(t.total, 0) + COALESCE(t.income, 0),
 		       COALESCE(t.saved, 0),
 		       COALESCE(n.hysa_cents + n.brokerage_cents + n.k401_vested_cents + n.k401_unvested_cents, 0)
 		FROM months m
 		LEFT JOIN (
 			SELECT month,
-			       SUM(amount_cents) AS spent,
+			       SUM(CASE WHEN category IN (` + incomePlaceholders + `) THEN -amount_cents ELSE 0 END) AS income,
+			       SUM(amount_cents) AS total,
 			       SUM(CASE WHEN category IN (` + savingsPlaceholders + `) THEN amount_cents ELSE 0 END) AS saved
 			FROM transactions GROUP BY month
 		) t ON t.month = m.month

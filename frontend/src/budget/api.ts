@@ -9,6 +9,7 @@ export type Category = {
 };
 
 export type CategoryGroup =
+  | "income"
   | "housing"
   | "transport"
   | "food"

@@ -23,6 +23,9 @@ import { currentMonth, shiftMonth } from "./format";
 // #3987e5/#d95926/#1baf7a (passes CVD + contrast gates on #0d1117).
 
 export const GROUP_META: Record<string, { label: string; color: string }> = {
+  // #eda100 (yellow) — distinct from transport's #1baf7a; other groups
+  // already occupy blue/orange/aqua/violet/green/greys.
+  income: { label: "Income", color: "#eda100" },
   housing: { label: "Housing", color: "#3987e5" },
   transport: { label: "Transport", color: "#1baf7a" },
   food: { label: "Food", color: "#d95926" },
@@ -56,12 +59,13 @@ export const budgetStatus = (spent: number, budget: number): keyof typeof STATUS
 // ── derived metrics ──────────────────────────────────────────────────────────
 
 export type Metrics = {
-  totalOutCents: number; // every transaction this month
+  incomeCents: number; // derived from this month's income-category transactions
+  totalOutCents: number; // every non-income transaction this month
   savedTxCents: number; // HYSA + index fund transactions
   spendCents: number; // consumption = totalOut - savedTx
   investedCents: number; // savedTx + 401k match
-  surplusCents: number; // income - totalOut
-  savingsRate: number; // invested / (income + match), 0..1
+  surplusCents: number; // incomeCents - totalOut
+  savingsRate: number; // invested / (incomeCents + match), 0..1
   spentByCategory: Record<string, number>;
   netWorthTotalCents: number;
   targetMonthlyCents: number; // (goal - net worth) / months remaining
@@ -83,15 +87,26 @@ const futureValue = (
   return Math.round(baseCents * growth + contribCents * ((growth - 1) / i));
 };
 
-export const computeMetrics = (state: MonthState, savingsKeys: Set<string>): Metrics => {
+export const computeMetrics = (
+  state: MonthState,
+  savingsKeys: Set<string>,
+  incomeKeys: Set<string>
+): Metrics => {
   const spentByCategory: Record<string, number> = {};
   let totalOut = 0;
   let savedTx = 0;
+  let incomeCents = 0;
 
   for (const tx of state.transactions) {
     spentByCategory[tx.category] = (spentByCategory[tx.category] ?? 0) + tx.amount_cents;
-    totalOut += tx.amount_cents;
-    if (savingsKeys.has(tx.category)) savedTx += tx.amount_cents;
+    if (incomeKeys.has(tx.category)) {
+      // Stored negative (money entering); a paycheck must never reduce
+      // "total outflows" the way it would if summed in with everything else.
+      incomeCents += -tx.amount_cents;
+    } else {
+      totalOut += tx.amount_cents;
+      if (savingsKeys.has(tx.category)) savedTx += tx.amount_cents;
+    }
   }
 
   const nw = state.net_worth;
@@ -102,17 +117,18 @@ export const computeMetrics = (state: MonthState, savingsKeys: Set<string>): Met
   const target = Math.max(0, Math.round(remaining / months));
 
   const invested = savedTx + state.match_401k_cents;
-  const denom = state.income_cents + state.match_401k_cents;
+  const denom = incomeCents + state.match_401k_cents;
 
   let planned = state.match_401k_cents;
   for (const key of savingsKeys) planned += state.budgets[key] ?? 0;
 
   return {
+    incomeCents,
     totalOutCents: totalOut,
     savedTxCents: savedTx,
     spendCents: totalOut - savedTx,
     investedCents: invested,
-    surplusCents: state.income_cents - totalOut,
+    surplusCents: incomeCents - totalOut,
     savingsRate: denom > 0 ? invested / denom : 0,
     spentByCategory,
     netWorthTotalCents: netWorthTotal,
@@ -224,10 +240,30 @@ export function createBudgetStore() {
     return keys;
   });
 
+  const incomeKeys = createMemo<Set<string>>(() => {
+    const keys = new Set<string>();
+    for (const c of catalog()?.categories ?? []) {
+      if (c.group === "income") keys.add(c.key);
+    }
+    return keys;
+  });
+
+  /**
+   * Income categories store amount_cents negative (money entering, not
+   * leaving) so every existing "just sum the amounts" calculation — account
+   * balances, spend totals — nets correctly with zero special-casing.
+   * This is the one place that translates between what a user types
+   * (always a plain positive-looking dollar figure, same as any expense)
+   * and that storage convention. Self-inverse, so the same function also
+   * converts a stored amount back to its display value.
+   */
+  const signForCategory = (category: string, cents: number): number =>
+    incomeKeys().has(category) ? -cents : cents;
+
   const metrics = createMemo<Metrics | null>(() => {
     const s = state();
     if (!s) return null;
-    return computeMetrics(s, savingsKeys());
+    return computeMetrics(s, savingsKeys(), incomeKeys());
   });
 
   // ── auth ──
@@ -252,8 +288,9 @@ export function createBudgetStore() {
   };
 
   const addTransaction = async (input: Omit<Transaction, "id" | "month">) => {
+    const payload = { ...input, amount_cents: signForCategory(input.category, input.amount_cents) };
     const created = await guard(() =>
-      api.createTransaction(token(), { ...input, month: input.date.slice(0, 7) })
+      api.createTransaction(token(), { ...payload, month: payload.date.slice(0, 7) })
     );
     if (created.month === month()) {
       mutateState((s) => (s ? { ...s, transactions: insertSorted(s.transactions, created) } : s));
@@ -266,7 +303,8 @@ export function createBudgetStore() {
   };
 
   const updateTransaction = async (tx: Transaction) => {
-    const saved = await guard(() => api.updateTransaction(token(), tx));
+    const signedTx = { ...tx, amount_cents: signForCategory(tx.category, tx.amount_cents) };
+    const saved = await guard(() => api.updateTransaction(token(), signedTx));
     mutateState((s) => {
       if (!s) return s;
       const rest = s.transactions.filter((x) => x.id !== saved.id);
@@ -287,41 +325,26 @@ export function createBudgetStore() {
     refreshBalances();
   };
 
-  // ── month settings ──
-  const saveMonthSettings = async (
-    incomeCents: number,
-    threePaycheck: boolean,
-    matchCents: number
-  ) => {
-    const m = month();
+  // ── 401k match ──
+  // The employer match never hits a personal account, so unlike income it
+  // stays a manually-entered monthly figure rather than a transaction.
+  const saveMatch401k = async (matchCents: number) => {
+    const s = state();
+    if (!s) return;
     await guard(() =>
       api.saveMonth(token(), {
-        month: m,
-        income_cents: incomeCents,
-        three_paycheck: threePaycheck,
+        month: month(),
+        // income_cents/three_paycheck are legacy fields no longer editable
+        // from the UI (income is now derived from transactions) — resent
+        // unchanged only because the API still expects them together.
+        income_cents: s.income_cents,
+        three_paycheck: s.three_paycheck,
         match_401k_cents: matchCents,
       })
     );
-    mutateState((s) =>
-      s
-        ? {
-            ...s,
-            income_cents: incomeCents,
-            three_paycheck: threePaycheck,
-            match_401k_cents: matchCents,
-          }
-        : s
-    );
+    mutateState((prev) => (prev ? { ...prev, match_401k_cents: matchCents } : prev));
     bumpHistory();
-    flash("Income saved");
-  };
-
-  const setThreePaycheck = async (on: boolean) => {
-    const s = state();
-    const defaults = catalog()?.defaults;
-    if (!s || !defaults) return;
-    const income = on ? defaults.three_paycheck_income_cents : defaults.income_cents;
-    await saveMonthSettings(income, on, s.match_401k_cents);
+    flash("401k match saved");
   };
 
   // ── budgets ──
@@ -429,6 +452,8 @@ export function createBudgetStore() {
     metrics,
     groupOf,
     savingsKeys,
+    incomeKeys,
+    signForCategory,
     toast,
     apiError,
     flash,
@@ -440,8 +465,7 @@ export function createBudgetStore() {
     addTransaction,
     updateTransaction,
     deleteTransaction,
-    saveMonthSettings,
-    setThreePaycheck,
+    saveMatch401k,
     saveBudget,
     saveNetWorth,
     suggest,
