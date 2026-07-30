@@ -59,6 +59,7 @@ func (h *BudgetHandler) HandleMeta(w http.ResponseWriter, r *http.Request) {
 			db.TypeAsset, db.TypeLiability, db.TypeIncome, db.TypeExpense, db.TypeEquity,
 		},
 		"budget_groups": db.BudgetGroups,
+		"asset_classes": db.AssetClasses,
 		"defaults": map[string]interface{}{
 			"goal_cents":   db.DefaultGoalCents,
 			"target_month": db.DefaultTargetMonth,
@@ -298,6 +299,10 @@ func (h *BudgetHandler) HandleGoal(w http.ResponseWriter, r *http.Request) {
 	}
 	if !db.ValidMonth(g.TargetMonth) {
 		writeErr(w, http.StatusBadRequest, "target_month must be YYYY-MM")
+		return
+	}
+	if g.EmergencyMonths < 0 || g.EmergencyMonths > 60 {
+		writeErr(w, http.StatusBadRequest, "emergency_months must be between 0 and 60")
 		return
 	}
 	if err := db.SetGoal(h.conn, g); err != nil {

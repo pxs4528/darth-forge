@@ -5,6 +5,7 @@ import { api } from "./api";
 import Charts from "./Charts";
 import Dashboard from "./Dashboard";
 import EntryForm from "./EntryForm";
+import Investing from "./Investing";
 import { buildCsv, downloadCsv } from "./export";
 import { monthLabel } from "./format";
 import Ledger from "./Ledger";
@@ -168,6 +169,7 @@ const BudgetPage: Component = () => {
             <EntryForm store={store} registerFocus={registerFocus} />
             <Ledger store={store} />
             <Accounts store={store} />
+            <Investing store={store} />
             <Dashboard store={store} />
             <Charts store={store} />
           </div>

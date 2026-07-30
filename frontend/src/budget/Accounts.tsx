@@ -1,7 +1,7 @@
 import { createMemo, createSignal, For, Show, type Component } from "solid-js";
 import type { AccountBalance, AccountType } from "./api";
 import { money, parseCents, today } from "./format";
-import { displayBalance, GROUP_LABELS, TYPE_META, type BudgetStore } from "./store";
+import { CLASS_LABELS, displayBalance, GROUP_LABELS, TYPE_META, type BudgetStore } from "./store";
 
 // What you own and owe, with balances that are computed from the ledger rather
 // than typed in. Also where accounts are created, renamed and archived.
@@ -203,6 +203,19 @@ const Accounts: Component<Props> = (props) => {
                   when={a.type === "asset" || a.type === "liability"}
                   fallback={<span class="text-[11px] text-gray-600 px-1">{a.budget_group}</span>}>
                   <div class="flex gap-1.5 items-center">
+                    {/* Asset class drives the allocation and reserve figures. */}
+                    <Show when={a.type === "asset"}>
+                      <select
+                        value={a.subtype}
+                        onChange={(e) => patch(a, { subtype: e.currentTarget.value })}
+                        class={inputCls + " w-24 text-[11px]"}
+                        aria-label="Asset class">
+                        <option value="">set class…</option>
+                        <For each={store.meta()?.asset_classes ?? []}>
+                          {(c) => <option value={c}>{CLASS_LABELS[c] ?? c}</option>}
+                        </For>
+                      </select>
+                    </Show>
                     <button
                       onClick={() => {
                         setOpeningFor(openingFor() === a.id ? null : a.id);

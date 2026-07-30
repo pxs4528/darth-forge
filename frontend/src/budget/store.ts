@@ -95,6 +95,25 @@ export const splitsFor = (fromId: number, toId: number, amountCents: number): Sp
   { account_id: toId, amount_cents: amountCents },
 ];
 
+export const CLASS_LABELS: Record<string, string> = {
+  cash: "Cash",
+  invested: "Invested",
+  retirement: "Retirement",
+  other: "Other",
+  "": "Unclassified",
+};
+
+// Cash first (most liquid), then risk assets, then locked-away retirement.
+export const CLASS_ORDER = ["cash", "invested", "retirement", "other", ""];
+
+export const CLASS_COLORS: Record<string, string> = {
+  cash: "#3987e5",
+  invested: "#1baf7a",
+  retirement: "#9085e9",
+  other: "#898781",
+  "": "#5f5d58",
+};
+
 // ── derived metrics ──────────────────────────────────────────────────────────
 
 export type Projections = { none: number; realistic: number; optimistic: number };
@@ -296,6 +315,60 @@ export function createBudgetStore() {
     )
   );
 
+  // ── allocation & liquidity ──
+  //
+  // These are inputs to a decision, not a recommendation. Asset accounts carry
+  // an asset class in `subtype`; unclassified ones are reported separately
+  // rather than guessed, since calling a brokerage "cash" would make the
+  // emergency-fund maths wrong in the dangerous direction.
+
+  type ClassRow = { key: string; balanceCents: number; changeCents: number };
+
+  const allocation = createMemo<ClassRow[]>(() => {
+    const byClass = new Map<string, ClassRow>();
+    for (const a of accounts()) {
+      if (a.archived || a.type !== "asset") continue;
+      const key = CLASS_ORDER.includes(a.subtype) ? a.subtype : "other";
+      const row = byClass.get(key) ?? { key, balanceCents: 0, changeCents: 0 };
+      row.balanceCents += a.balance_cents;
+      row.changeCents += a.change_cents;
+      byClass.set(key, row);
+    }
+    return CLASS_ORDER.filter((k) => byClass.has(k)).map((k) => byClass.get(k)!);
+  });
+
+  const assetsTotal = createMemo(() => allocation().reduce((sum, r) => sum + r.balanceCents, 0));
+
+  const classBalance = (key: string) => allocation().find((r) => r.key === key)?.balanceCents ?? 0;
+
+  /**
+   * Average monthly spending across months that have activity, capped to the
+   * last 6. One month of data makes this noisy — it settles as history builds.
+   */
+  const trailingSpend = createMemo(() => {
+    const points = (history()?.history ?? []).filter((p) => p.expense_cents > 0);
+    const recent = points.slice(-6);
+    if (recent.length === 0) return { perMonth: 0, months: 0 };
+    const total = recent.reduce((sum, p) => sum + p.expense_cents, 0);
+    return { perMonth: Math.round(total / recent.length), months: recent.length };
+  });
+
+  /** Cash runway and how much cash sits above the reserve you asked for. */
+  const liquidity = createMemo(() => {
+    const cash = classBalance("cash");
+    const spend = trailingSpend().perMonth;
+    const targetMonths = goal()?.emergency_months ?? 6;
+    const reserve = spend * targetMonths;
+    return {
+      cashCents: cash,
+      spendPerMonth: spend,
+      monthsCovered: spend > 0 ? cash / spend : 0,
+      targetMonths,
+      reserveCents: reserve,
+      deployableCents: cash - reserve,
+    };
+  });
+
   const createAccount = async (a: Omit<Account, "id">) => {
     await guard(() => api.createAccount(token(), a));
     await reload();
@@ -370,6 +443,10 @@ export function createBudgetStore() {
     netWorthTotal,
     netWorthInGoal,
     hasExcludedAccounts,
+    allocation,
+    assetsTotal,
+    trailingSpend,
+    liquidity,
     toast,
     apiError,
     flash,
