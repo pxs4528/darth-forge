@@ -76,7 +76,8 @@ func TestSummarize(t *testing.T) {
 		acct(TypeLiability, -20000, -20000),
 	}
 
-	s := summarize(accounts, goal, "2026-07")
+	// earned excludes opening-balance entries; here everything was earned.
+	s := summarize(accounts, goal, "2026-07", 418184-20000)
 
 	if s.IncomeCents != 575184 {
 		t.Errorf("income = %d, want 575184 (income credits flipped for display)", s.IncomeCents)
@@ -107,7 +108,7 @@ func TestSummarize(t *testing.T) {
 func TestSummarizeAtOrPastTarget(t *testing.T) {
 	// Past the target date: no negative or divide-by-zero target.
 	s := summarize([]AccountBalance{acct(TypeAsset, 100, 0)},
-		Goal{GoalCents: 10000000, TargetMonth: "2026-01"}, "2026-07")
+		Goal{GoalCents: 10000000, TargetMonth: "2026-01"}, "2026-07", 0)
 	if s.MonthsRemaining != 0 {
 		t.Errorf("months remaining = %d, want 0 when the target month has passed", s.MonthsRemaining)
 	}
@@ -117,9 +118,40 @@ func TestSummarizeAtOrPastTarget(t *testing.T) {
 
 	// Goal already met: nothing more needed per month.
 	s = summarize([]AccountBalance{acct(TypeAsset, 20000000, 0)},
-		Goal{GoalCents: 10000000, TargetMonth: "2029-07"}, "2026-07")
+		Goal{GoalCents: 10000000, TargetMonth: "2029-07"}, "2026-07", 0)
 	if s.TargetMonthlyCents != 0 {
 		t.Errorf("target = %d, want 0 once the goal is exceeded", s.TargetMonthlyCents)
+	}
+}
+
+// An opening balance must land in the net worth TOTAL but not in the monthly
+// change — otherwise the first month of any account reads as a huge windfall
+// and the pace calculation is nonsense. This mirrors the real July data:
+// $50,361.05 of opening balances against a $2,377.77 operating shortfall.
+func TestSummarizeExcludesOpeningBalancesFromChange(t *testing.T) {
+	accounts := []AccountBalance{
+		acct(TypeIncome, -695184, -695184),
+		acct(TypeExpense, 932961, 932961),
+		// Assets hold the opening balances plus the month's activity.
+		acct(TypeAsset, 5036105-237777, 5036105-237777),
+	}
+	earned := int64(-237777) // income 695184 - expense 932961
+
+	s := summarize(accounts, Goal{GoalCents: 10000000, TargetMonth: "2028-10"}, "2026-07", earned)
+
+	if s.NetWorthCents != 5036105-237777 {
+		t.Errorf("net worth total = %d, want %d — opening balances ARE real money",
+			s.NetWorthCents, 5036105-237777)
+	}
+	if s.NetWorthChange != -237777 {
+		t.Errorf("net worth change = %d, want -237777 — opening balances are not earnings",
+			s.NetWorthChange)
+	}
+	// With equity excluded the change equals the surplus, since the only other
+	// things moving net worth are income and expenses.
+	if s.NetWorthChange != s.SurplusCents {
+		t.Errorf("change %d should equal surplus %d once equity is excluded",
+			s.NetWorthChange, s.SurplusCents)
 	}
 }
 
