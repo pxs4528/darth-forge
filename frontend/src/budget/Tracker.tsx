@@ -19,7 +19,7 @@ const Tracker: Component<Props> = (props) => {
     const sum = s();
     const g = goal();
     if (!sum || !g || g.goal_cents <= 0) return 0;
-    return Math.max(0, Math.min(100, (sum.net_worth_cents / g.goal_cents) * 100));
+    return Math.max(0, Math.min(100, (sum.goal_net_worth_cents / g.goal_cents) * 100));
   };
 
   /** Are we adding at least the pace the goal needs? */
@@ -121,7 +121,7 @@ const Tracker: Component<Props> = (props) => {
         {/* Headline */}
         <div>
           <div class="text-2xl font-semibold text-white tabular-nums">
-            {money(s()!.net_worth_cents)}
+            {money(s()!.goal_net_worth_cents)}
           </div>
           <div class="mt-1.5 h-2 rounded-full bg-[#21262d] overflow-hidden">
             <div
@@ -132,7 +132,7 @@ const Tracker: Component<Props> = (props) => {
           <div class="mt-1 flex justify-between text-[11px] text-gray-500 tabular-nums">
             <span>{Math.round(pct())}% there</span>
             <span>
-              {moneyShort(Math.max(0, goal()!.goal_cents - s()!.net_worth_cents))} to go ·{" "}
+              {moneyShort(Math.max(0, goal()!.goal_cents - s()!.goal_net_worth_cents))} to go ·{" "}
               {s()!.months_remaining} mo
             </span>
           </div>

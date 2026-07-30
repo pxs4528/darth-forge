@@ -55,13 +55,19 @@ func TestValidateSplits(t *testing.T) {
 	}
 }
 
-// acct is a terse constructor for summarize's input.
+// acct is a terse constructor for summarize's input. Goal-eligible by default.
 func acct(kind string, balance, change int64) AccountBalance {
 	return AccountBalance{
-		Account:      Account{Type: kind},
+		Account:      Account{Type: kind, InGoal: true},
 		BalanceCents: balance,
 		ChangeCents:  change,
 	}
+}
+
+// offGoal marks an account as counted in net worth but excluded from the goal.
+func offGoal(a AccountBalance) AccountBalance {
+	a.InGoal = false
+	return a
 }
 
 func TestSummarize(t *testing.T) {
@@ -152,6 +158,50 @@ func TestSummarizeExcludesOpeningBalancesFromChange(t *testing.T) {
 	if s.NetWorthChange != s.SurplusCents {
 		t.Errorf("change %d should equal surplus %d once equity is excluded",
 			s.NetWorthChange, s.SurplusCents)
+	}
+}
+
+// A financed car belongs in the books but not in a savings milestone: the
+// asset and its loan both sit off-goal, so buying it leaves the goal figure
+// untouched while net worth reflects reality.
+func TestSummarizeExcludesOffGoalAccounts(t *testing.T) {
+	accounts := []AccountBalance{
+		acct(TypeAsset, 500000, 0),                       // checking, in goal
+		offGoal(acct(TypeAsset, 2955600, 2955600)),       // Mazda3
+		offGoal(acct(TypeLiability, -2955600, -2955600)), // Car Loan
+	}
+
+	s := summarize(accounts, Goal{GoalCents: 10000000, TargetMonth: "2029-07"}, "2026-07", 0)
+
+	if s.NetWorthCents != 500000 {
+		t.Errorf("net worth = %d, want 500000 — car and loan offset exactly", s.NetWorthCents)
+	}
+	if s.GoalNetWorthCents != 500000 {
+		t.Errorf("goal net worth = %d, want 500000 — only the checking account counts",
+			s.GoalNetWorthCents)
+	}
+
+	// The target must be based on the goal figure, not total net worth.
+	wantTarget := (int64(10000000) - 500000) / s.MonthsRemaining
+	if s.TargetMonthlyCents != wantTarget {
+		t.Errorf("target = %d, want %d", s.TargetMonthlyCents, wantTarget)
+	}
+}
+
+// With an off-goal asset holding value, the two net-worth figures diverge —
+// that divergence is the whole point of the flag.
+func TestSummarizeGoalFigureDivergesFromTotal(t *testing.T) {
+	accounts := []AccountBalance{
+		acct(TypeAsset, 4798328, 0),          // savings etc.
+		offGoal(acct(TypeAsset, 2000000, 0)), // car, already owned outright
+	}
+	s := summarize(accounts, Goal{GoalCents: 10000000, TargetMonth: "2029-07"}, "2026-07", 0)
+
+	if s.NetWorthCents != 6798328 {
+		t.Errorf("net worth = %d, want 6798328 (includes the car)", s.NetWorthCents)
+	}
+	if s.GoalNetWorthCents != 4798328 {
+		t.Errorf("goal net worth = %d, want 4798328 (excludes the car)", s.GoalNetWorthCents)
 	}
 }
 

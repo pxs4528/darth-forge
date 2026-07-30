@@ -150,7 +150,7 @@ const BudgetPage: Component = () => {
             <span>
               net worth{" "}
               <span class="text-white font-semibold tabular-nums">
-                ${Math.round(store.summary()!.net_worth_cents / 100).toLocaleString("en-US")}
+                ${Math.round(store.summary()!.goal_net_worth_cents / 100).toLocaleString("en-US")}
               </span>
             </span>
             <span>
