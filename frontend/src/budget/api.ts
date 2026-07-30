@@ -39,7 +39,11 @@ export type Entry = {
 export type Goal = {
   goal_cents: number;
   target_month: string;
+  /** Months of spending to hold in cash before treating cash as deployable. */
+  emergency_months: number;
 };
+
+export type AssetClass = "cash" | "invested" | "retirement" | "other" | "";
 
 export type Summary = {
   income_cents: number;
@@ -84,6 +88,7 @@ export type RegisterRow = Entry & {
 export type Meta = {
   account_types: AccountType[];
   budget_groups: string[];
+  asset_classes: AssetClass[];
   defaults: { goal_cents: number; target_month: string };
 };
 

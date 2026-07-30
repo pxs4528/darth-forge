@@ -122,9 +122,10 @@ var schema = []string{
 	// Single-row goal config. months remaining is derived from target_month
 	// rather than being a number you decrement by hand every month.
 	`CREATE TABLE IF NOT EXISTS goal (
-		id           INTEGER PRIMARY KEY CHECK (id = 1),
-		goal_cents   INTEGER NOT NULL DEFAULT 10000000,
-		target_month TEXT NOT NULL DEFAULT '2029-07'
+		id               INTEGER PRIMARY KEY CHECK (id = 1),
+		goal_cents       INTEGER NOT NULL DEFAULT 10000000,
+		target_month     TEXT NOT NULL DEFAULT '2029-07',
+		emergency_months INTEGER NOT NULL DEFAULT 6
 	)`,
 }
 
@@ -150,6 +151,12 @@ func migrate(conn *sql.DB) error {
 
 	// Column additions to tables that already exist from an earlier version.
 	if err := ensureColumn(conn, "accounts", "in_goal", "INTEGER NOT NULL DEFAULT 1"); err != nil {
+		return err
+	}
+	if err := ensureColumn(conn, "goal", "emergency_months", "INTEGER NOT NULL DEFAULT 6"); err != nil {
+		return err
+	}
+	if err := normalizeSubtypes(conn); err != nil {
 		return err
 	}
 

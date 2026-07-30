@@ -23,6 +23,41 @@ func ValidAccountType(t string) bool {
 	return false
 }
 
+// Asset classes. For asset accounts, subtype carries one of these so the tool
+// can report allocation and emergency-fund coverage. "" means unclassified —
+// deliberately not guessed, since mistaking a brokerage for cash would make
+// the allocation figures lie.
+const (
+	ClassCash       = "cash"
+	ClassInvested   = "invested"
+	ClassRetirement = "retirement"
+	ClassOther      = "other"
+)
+
+var AssetClasses = []string{ClassCash, ClassInvested, ClassRetirement, ClassOther}
+
+// legacySubtypes maps the original descriptive subtypes onto asset classes.
+var legacySubtypes = map[string]string{
+	"checking":   ClassCash,
+	"savings":    ClassCash,
+	"investment": ClassInvested,
+	"brokerage":  ClassInvested,
+}
+
+// normalizeSubtypes upgrades seeded descriptive subtypes to asset classes.
+// Idempotent: after the first run nothing matches. Credit accounts keep their
+// "credit" subtype, which is unrelated to asset classification.
+func normalizeSubtypes(conn *sql.DB) error {
+	for from, to := range legacySubtypes {
+		if _, err := conn.Exec(
+			`UPDATE accounts SET subtype = ? WHERE type = 'asset' AND subtype = ?`, to, from,
+		); err != nil {
+			return fmt.Errorf("normalize subtype %s: %w", from, err)
+		}
+	}
+	return nil
+}
+
 // Budget groups organise expense accounts for display. Purely cosmetic.
 var BudgetGroups = []string{
 	"housing", "transport", "food", "subscriptions",
@@ -49,11 +84,11 @@ type seedAccount struct {
 // editable in the UI afterwards — it exists so the tool is usable on day one
 // rather than presenting an empty screen.
 var seedCatalog = []seedAccount{
-	// Where money sits.
-	{"Checking", TypeAsset, "checking", ""},
-	{"HYSA", TypeAsset, "savings", ""},
-	{"Brokerage", TypeAsset, "investment", ""},
-	{"401k", TypeAsset, "retirement", ""},
+	// Where money sits. Asset subtypes are asset classes (see AssetClasses).
+	{"Checking", TypeAsset, ClassCash, ""},
+	{"HYSA", TypeAsset, ClassCash, ""},
+	{"Brokerage", TypeAsset, ClassInvested, ""},
+	{"401k", TypeAsset, ClassRetirement, ""},
 
 	// What you owe. Charges make these more negative; payments bring them
 	// back toward zero.

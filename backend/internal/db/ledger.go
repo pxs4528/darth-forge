@@ -51,6 +51,9 @@ type Entry struct {
 type Goal struct {
 	GoalCents   int64  `json:"goal_cents"`
 	TargetMonth string `json:"target_month"`
+	// EmergencyMonths is how many months of spending you want held in cash.
+	// Used to work out how much cash is genuinely surplus.
+	EmergencyMonths int64 `json:"emergency_months"`
 }
 
 // Summary is the month's headline arithmetic, all derived from splits.
@@ -477,10 +480,10 @@ func SetBudget(conn *sql.DB, month string, accountID, cents int64) error {
 
 func GetGoal(conn *sql.DB) (Goal, error) {
 	var g Goal
-	err := conn.QueryRow(`SELECT goal_cents, target_month FROM goal WHERE id = 1`).
-		Scan(&g.GoalCents, &g.TargetMonth)
+	err := conn.QueryRow(`SELECT goal_cents, target_month, emergency_months FROM goal WHERE id = 1`).
+		Scan(&g.GoalCents, &g.TargetMonth, &g.EmergencyMonths)
 	if err == sql.ErrNoRows {
-		return Goal{GoalCents: DefaultGoalCents, TargetMonth: DefaultTargetMonth}, nil
+		return Goal{GoalCents: DefaultGoalCents, TargetMonth: DefaultTargetMonth, EmergencyMonths: 6}, nil
 	}
 	if err != nil {
 		return g, fmt.Errorf("load goal: %w", err)
@@ -490,10 +493,11 @@ func GetGoal(conn *sql.DB) (Goal, error) {
 
 func SetGoal(conn *sql.DB, g Goal) error {
 	_, err := conn.Exec(`
-		INSERT INTO goal (id, goal_cents, target_month) VALUES (1, ?, ?)
+		INSERT INTO goal (id, goal_cents, target_month, emergency_months) VALUES (1, ?, ?, ?)
 		ON CONFLICT (id) DO UPDATE SET goal_cents = excluded.goal_cents,
-		                               target_month = excluded.target_month`,
-		g.GoalCents, g.TargetMonth)
+		                               target_month = excluded.target_month,
+		                               emergency_months = excluded.emergency_months`,
+		g.GoalCents, g.TargetMonth, g.EmergencyMonths)
 	return err
 }
 
