@@ -17,10 +17,10 @@ const (
 )
 
 type LogEntry struct {
-	Timestamp string `json:"timestamp"`
-	Level     Level  `json:"level"`
-	Service   string `json:"service"`
-	Message   string `json:"message"`
+	Timestamp string                 `json:"timestamp"`
+	Level     Level                  `json:"level"`
+	Service   string                 `json:"service"`
+	Message   string                 `json:"message"`
 	Data      map[string]interface{} `json:"data,omitempty"`
 }
 
@@ -53,7 +53,7 @@ func (l *Logger) log(level Level, service, message string, data map[string]inter
 	}
 
 	l.buffer.Add(entry)
-	
+
 	// Print to stdout for Docker logs
 	jsonEntry, _ := json.Marshal(entry)
 	fmt.Println(string(jsonEntry))

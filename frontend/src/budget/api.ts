@@ -11,6 +11,8 @@ export type Account = {
   budget_group: string;
   sort: number;
   archived: boolean;
+  /** Counts toward the goal tracker. Off for depreciating assets and their debt. */
+  in_goal: boolean;
 };
 
 /** An account plus its balance through the viewed month. */
@@ -44,6 +46,7 @@ export type Summary = {
   expense_cents: number;
   surplus_cents: number;
   net_worth_cents: number;
+  goal_net_worth_cents: number;
   net_worth_change_cents: number;
   months_remaining: number;
   target_monthly_cents: number;

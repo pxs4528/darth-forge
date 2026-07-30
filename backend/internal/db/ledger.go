@@ -18,6 +18,9 @@ type Account struct {
 	BudgetGroup string `json:"budget_group"`
 	Sort        int64  `json:"sort"`
 	Archived    bool   `json:"archived"`
+	// InGoal keeps an account in the books but out of the goal tracker —
+	// for depreciating assets and their debt, or unvested balances.
+	InGoal bool `json:"in_goal"`
 }
 
 // AccountBalance is an account plus its balance through the viewed month and
@@ -52,10 +55,17 @@ type Goal struct {
 
 // Summary is the month's headline arithmetic, all derived from splits.
 type Summary struct {
-	IncomeCents     int64 `json:"income_cents"`
-	ExpenseCents    int64 `json:"expense_cents"`
-	SurplusCents    int64 `json:"surplus_cents"`
-	NetWorthCents   int64 `json:"net_worth_cents"`
+	IncomeCents  int64 `json:"income_cents"`
+	ExpenseCents int64 `json:"expense_cents"`
+	SurplusCents int64 `json:"surplus_cents"`
+	// NetWorthCents is every asset and liability — the true balance sheet.
+	NetWorthCents int64 `json:"net_worth_cents"`
+	// GoalNetWorthCents counts only in_goal accounts, so a car and its loan
+	// don't flatter progress toward a savings milestone.
+	GoalNetWorthCents int64 `json:"goal_net_worth_cents"`
+	// NetWorthChange is goal-eligible growth this month, excluding opening
+	// balances. Moving cash into an excluded asset correctly shows as a
+	// decrease here: it left the pool the goal measures.
 	NetWorthChange  int64 `json:"net_worth_change_cents"`
 	MonthsRemaining int64 `json:"months_remaining"`
 	// TargetMonthlyCents is what you must add to net worth each remaining
@@ -126,7 +136,7 @@ func MonthsBetween(from, to string) int64 {
 
 func ListAccounts(conn *sql.DB) ([]Account, error) {
 	rows, err := conn.Query(
-		`SELECT id, name, type, subtype, budget_group, sort, archived
+		`SELECT id, name, type, subtype, budget_group, sort, archived, in_goal
 		 FROM accounts ORDER BY archived, sort, id`,
 	)
 	if err != nil {
@@ -137,11 +147,13 @@ func ListAccounts(conn *sql.DB) ([]Account, error) {
 	out := []Account{}
 	for rows.Next() {
 		var a Account
-		var archived int64
-		if err := rows.Scan(&a.ID, &a.Name, &a.Type, &a.Subtype, &a.BudgetGroup, &a.Sort, &archived); err != nil {
+		var archived, inGoal int64
+		if err := rows.Scan(&a.ID, &a.Name, &a.Type, &a.Subtype, &a.BudgetGroup,
+			&a.Sort, &archived, &inGoal); err != nil {
 			return nil, err
 		}
 		a.Archived = archived == 1
+		a.InGoal = inGoal == 1
 		out = append(out, a)
 	}
 	return out, rows.Err()
@@ -156,10 +168,14 @@ func AccountExists(conn *sql.DB, id int64) (bool, error) {
 }
 
 func CreateAccount(conn *sql.DB, a Account) (*Account, error) {
+	inGoal := 0
+	if a.InGoal {
+		inGoal = 1
+	}
 	res, err := conn.Exec(
-		`INSERT INTO accounts (name, type, subtype, budget_group, sort)
-		 VALUES (?, ?, ?, ?, ?)`,
-		a.Name, a.Type, a.Subtype, a.BudgetGroup, a.Sort,
+		`INSERT INTO accounts (name, type, subtype, budget_group, sort, in_goal)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
+		a.Name, a.Type, a.Subtype, a.BudgetGroup, a.Sort, inGoal,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("insert account: %w", err)
@@ -179,10 +195,15 @@ func UpdateAccount(conn *sql.DB, a Account) error {
 	if a.Archived {
 		archived = 1
 	}
+	inGoal := 0
+	if a.InGoal {
+		inGoal = 1
+	}
 	res, err := conn.Exec(
-		`UPDATE accounts SET name = ?, type = ?, subtype = ?, budget_group = ?, sort = ?, archived = ?
+		`UPDATE accounts SET name = ?, type = ?, subtype = ?, budget_group = ?, sort = ?,
+		                     archived = ?, in_goal = ?
 		 WHERE id = ?`,
-		a.Name, a.Type, a.Subtype, a.BudgetGroup, a.Sort, archived, a.ID,
+		a.Name, a.Type, a.Subtype, a.BudgetGroup, a.Sort, archived, inGoal, a.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("update account: %w", err)
@@ -301,8 +322,10 @@ func GetMonth(conn *sql.DB, month string) (*MonthState, error) {
 	return state, nil
 }
 
-// netWorthEarned is how much net worth actually grew through earning and
-// spending in a month, ignoring entries that merely establish the books.
+// netWorthEarned is how much goal-eligible net worth actually grew through
+// earning and spending in a month, ignoring entries that merely establish the
+// books. Excluded (in_goal = 0) accounts are left out, so buying a car with
+// cash correctly reads as a decrease: the money left the pool being measured.
 //
 // Recording an opening balance moves value from an equity account into an
 // asset, which raises net worth — correctly, since the money is real — but it
@@ -319,6 +342,7 @@ func netWorthEarned(conn *sql.DB, month string) (int64, error) {
 		JOIN accounts a ON a.id = s.account_id
 		WHERE t.month = ?
 		  AND a.type IN ('asset','liability')
+		  AND a.in_goal = 1
 		  AND t.id NOT IN (
 		      SELECT s2.txn_id FROM splits s2
 		      JOIN accounts a2 ON a2.id = s2.account_id
@@ -343,15 +367,19 @@ func summarize(accounts []AccountBalance, goal Goal, month string, earnedCents i
 		case TypeExpense:
 			s.ExpenseCents += a.ChangeCents
 		case TypeAsset, TypeLiability:
-			// The total includes everything — an opening balance is real money.
+			// The total includes everything — an opening balance is real money,
+			// and so is a car. The goal figure counts only in_goal accounts.
 			s.NetWorthCents += a.BalanceCents
+			if a.InGoal {
+				s.GoalNetWorthCents += a.BalanceCents
+			}
 		}
 	}
 	s.NetWorthChange = earnedCents
 	s.SurplusCents = s.IncomeCents - s.ExpenseCents
 
 	s.MonthsRemaining = MonthsBetween(month, goal.TargetMonth)
-	if remaining := goal.GoalCents - s.NetWorthCents; remaining > 0 && s.MonthsRemaining > 0 {
+	if remaining := goal.GoalCents - s.GoalNetWorthCents; remaining > 0 && s.MonthsRemaining > 0 {
 		s.TargetMonthlyCents = remaining / s.MonthsRemaining
 	}
 	return s

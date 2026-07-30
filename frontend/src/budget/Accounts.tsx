@@ -30,16 +30,6 @@ const Accounts: Component<Props> = (props) => {
     store.accounts().filter((a) => !a.archived && (a.type === "asset" || a.type === "liability"))
   );
 
-  const totals = createMemo(() => {
-    let assets = 0;
-    let debts = 0;
-    for (const a of balanceSheet()) {
-      if (a.type === "asset") assets += a.balance_cents;
-      else debts += -a.balance_cents;
-    }
-    return { assets, debts, net: assets - debts };
-  });
-
   const addAccount = async () => {
     const name = newName().trim();
     if (!name) return;
@@ -51,6 +41,7 @@ const Accounts: Component<Props> = (props) => {
         budget_group: newType() === "expense" ? newGroup() : "",
         sort: store.accounts().length,
         archived: false,
+        in_goal: true,
       });
       setNewName("");
     } catch (e) {
@@ -70,6 +61,7 @@ const Accounts: Component<Props> = (props) => {
         budget_group: merged.budget_group,
         sort: merged.sort,
         archived: merged.archived,
+        in_goal: merged.in_goal,
       });
     } catch (e) {
       store.flash(e instanceof Error ? e.message : "Failed to save account");
@@ -125,6 +117,13 @@ const Accounts: Component<Props> = (props) => {
                       <Show when={a.type === "liability"}>
                         <span class="text-gray-600 text-[11px]"> owed</span>
                       </Show>
+                      <Show when={!a.in_goal}>
+                        <span
+                          class="ml-1.5 text-[10px] text-gray-500 border border-[#30363d] rounded px-1"
+                          title="Counted in net worth, excluded from the goal">
+                          off-goal
+                        </span>
+                      </Show>
                     </td>
                     <td
                       class="text-right"
@@ -152,8 +151,20 @@ const Accounts: Component<Props> = (props) => {
                 Net worth
               </td>
               <td />
-              <td class="text-right font-bold text-white">{money(totals().net)}</td>
+              <td class="text-right font-bold text-white">{money(store.netWorthTotal())}</td>
             </tr>
+            {/* Only worth showing the split once something is actually excluded. */}
+            <Show when={store.hasExcludedAccounts()}>
+              <tr>
+                <td class="text-left py-1 text-gray-500 text-[11px] uppercase tracking-wider">
+                  Counts toward goal
+                </td>
+                <td />
+                <td class="text-right font-semibold text-[#3987e5]">
+                  {money(store.netWorthInGoal())}
+                </td>
+              </tr>
+            </Show>
           </tbody>
         </table>
       </div>
@@ -191,14 +202,27 @@ const Accounts: Component<Props> = (props) => {
                 <Show
                   when={a.type === "asset" || a.type === "liability"}
                   fallback={<span class="text-[11px] text-gray-600 px-1">{a.budget_group}</span>}>
-                  <button
-                    onClick={() => {
-                      setOpeningFor(openingFor() === a.id ? null : a.id);
-                      setOpeningAmount("");
-                    }}
-                    class="px-2 py-1 text-[11px] rounded border border-[#30363d] text-gray-300 hover:bg-[#21262d] whitespace-nowrap">
-                    opening $
-                  </button>
+                  <div class="flex gap-1.5 items-center">
+                    <button
+                      onClick={() => {
+                        setOpeningFor(openingFor() === a.id ? null : a.id);
+                        setOpeningAmount("");
+                      }}
+                      class="px-2 py-1 text-[11px] rounded border border-[#30363d] text-gray-300 hover:bg-[#21262d] whitespace-nowrap">
+                      opening $
+                    </button>
+                    <label
+                      class="flex items-center gap-1 text-[11px] text-gray-400 cursor-pointer whitespace-nowrap"
+                      title="Count this account toward the goal. Turn off for depreciating assets like a car, its loan, or unvested balances.">
+                      <input
+                        type="checkbox"
+                        checked={a.in_goal}
+                        onChange={(e) => patch(a, { in_goal: e.currentTarget.checked })}
+                        class="accent-[#3987e5]"
+                      />
+                      goal
+                    </label>
+                  </div>
                 </Show>
                 <button
                   onClick={() => patch(a, { archived: !a.archived })}

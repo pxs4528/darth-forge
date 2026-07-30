@@ -237,8 +237,8 @@ export function createBudgetStore() {
   const projections = createMemo<Projections>(() => {
     const s = summary();
     if (!s) return { none: 0, realistic: 0, optimistic: 0 };
-    // Project forward using this month's actual net-worth growth as the run rate.
-    return project(s.net_worth_cents, s.net_worth_change_cents, s.months_remaining);
+    // Project the goal-eligible pool forward at this month's run rate.
+    return project(s.goal_net_worth_cents, s.net_worth_change_cents, s.months_remaining);
   });
 
   // ── auth ──
@@ -287,6 +287,15 @@ export function createBudgetStore() {
   };
 
   // ── accounts ──
+  /** Net worth including everything, vs. only what counts toward the goal. */
+  const netWorthTotal = () => summary()?.net_worth_cents ?? 0;
+  const netWorthInGoal = () => summary()?.goal_net_worth_cents ?? 0;
+  const hasExcludedAccounts = createMemo(() =>
+    accounts().some(
+      (a) => !a.archived && !a.in_goal && (a.type === "asset" || a.type === "liability")
+    )
+  );
+
   const createAccount = async (a: Omit<Account, "id">) => {
     await guard(() => api.createAccount(token(), a));
     await reload();
@@ -358,6 +367,9 @@ export function createBudgetStore() {
     summary,
     goal,
     projections,
+    netWorthTotal,
+    netWorthInGoal,
+    hasExcludedAccounts,
     toast,
     apiError,
     flash,

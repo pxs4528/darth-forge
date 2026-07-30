@@ -18,17 +18,20 @@ export const buildCsv = (state: MonthState, accountName: (id: number) => string)
   lines.push(`Spending,${usd(s.expense_cents)}`);
   lines.push(`Surplus,${usd(s.surplus_cents)}`);
   lines.push(`Net worth,${usd(s.net_worth_cents)}`);
+  lines.push(`Net worth counting toward goal,${usd(s.goal_net_worth_cents)}`);
   lines.push(`Net worth change,${usd(s.net_worth_change_cents)}`);
   lines.push(`Goal,${usd(state.goal.goal_cents)}`);
   lines.push(`Target month,${state.goal.target_month}`);
   lines.push(`Needed per month,${usd(s.target_monthly_cents)}`);
   lines.push("");
 
-  lines.push("Account,Type,Balance,Change this month");
+  lines.push("Account,Type,Balance,Change this month,Counts toward goal");
   for (const a of state.accounts) {
     if (a.archived) continue;
     if (a.type !== "asset" && a.type !== "liability") continue;
-    lines.push(`${esc(a.name)},${a.type},${usd(a.balance_cents)},${usd(a.change_cents)}`);
+    lines.push(
+      `${esc(a.name)},${a.type},${usd(a.balance_cents)},${usd(a.change_cents)},${a.in_goal ? "yes" : "no"}`
+    );
   }
   lines.push("");
 

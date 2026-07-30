@@ -76,6 +76,9 @@ func Open() (*sql.DB, error) {
 // Net worth is therefore SUM(balance) over asset+liability accounts — debt is
 // already negative, so it subtracts itself. Nothing is typed in by hand.
 var schema = []string{
+	// in_goal excludes an account from the goal tracker while keeping it in the
+	// books — for depreciating assets like a car, its loan, or unvested 401k,
+	// which are real but aren't the milestone being aimed at.
 	`CREATE TABLE IF NOT EXISTS accounts (
 		id           INTEGER PRIMARY KEY AUTOINCREMENT,
 		name         TEXT NOT NULL UNIQUE,
@@ -83,7 +86,8 @@ var schema = []string{
 		subtype      TEXT NOT NULL DEFAULT '',
 		budget_group TEXT NOT NULL DEFAULT '',
 		sort         INTEGER NOT NULL DEFAULT 0,
-		archived     INTEGER NOT NULL DEFAULT 0
+		archived     INTEGER NOT NULL DEFAULT 0,
+		in_goal      INTEGER NOT NULL DEFAULT 1
 	)`,
 
 	`CREATE TABLE IF NOT EXISTS txns (
@@ -142,6 +146,11 @@ func migrate(conn *sql.DB) error {
 		if _, err := conn.Exec(stmt); err != nil {
 			return fmt.Errorf("statement %d: %w", i, err)
 		}
+	}
+
+	// Column additions to tables that already exist from an earlier version.
+	if err := ensureColumn(conn, "accounts", "in_goal", "INTEGER NOT NULL DEFAULT 1"); err != nil {
+		return err
 	}
 
 	if _, err := conn.Exec(
@@ -210,6 +219,21 @@ func tableExists(conn *sql.DB, name string) (bool, error) {
 		return false, fmt.Errorf("check table %s: %w", name, err)
 	}
 	return n > 0, nil
+}
+
+// ensureColumn adds a column if the table doesn't already have it, so upgrades
+// are idempotent across reboots.
+func ensureColumn(conn *sql.DB, table, column, decl string) error {
+	present, err := hasColumn(conn, table, column)
+	if err != nil || present {
+		return err
+	}
+	if _, err := conn.Exec(
+		"ALTER TABLE " + quoteIdent(table) + " ADD COLUMN " + column + " " + decl,
+	); err != nil {
+		return fmt.Errorf("add %s.%s: %w", table, column, err)
+	}
+	return nil
 }
 
 func hasColumn(conn *sql.DB, table, column string) (bool, error) {
