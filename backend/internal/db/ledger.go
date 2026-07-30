@@ -291,14 +291,50 @@ func GetMonth(conn *sql.DB, month string) (*MonthState, error) {
 		return nil, err
 	}
 	state.Goal = goal
-	state.Summary = summarize(accounts, goal, month)
+
+	earned, err := netWorthEarned(conn, month)
+	if err != nil {
+		return nil, err
+	}
+	state.Summary = summarize(accounts, goal, month, earned)
 
 	return state, nil
 }
 
+// netWorthEarned is how much net worth actually grew through earning and
+// spending in a month, ignoring entries that merely establish the books.
+//
+// Recording an opening balance moves value from an equity account into an
+// asset, which raises net worth — correctly, since the money is real — but it
+// isn't money you *added* that month, it's the starting position. Counting it
+// would make the first month of any account look like a windfall and wreck
+// the pace calculation. So entries touching equity are excluded here (they
+// still count toward the net worth total, just not the change).
+func netWorthEarned(conn *sql.DB, month string) (int64, error) {
+	var earned int64
+	err := conn.QueryRow(`
+		SELECT COALESCE(SUM(s.amount_cents), 0)
+		FROM splits s
+		JOIN txns t     ON t.id = s.txn_id
+		JOIN accounts a ON a.id = s.account_id
+		WHERE t.month = ?
+		  AND a.type IN ('asset','liability')
+		  AND t.id NOT IN (
+		      SELECT s2.txn_id FROM splits s2
+		      JOIN accounts a2 ON a2.id = s2.account_id
+		      WHERE a2.type = 'equity'
+		  )`, month).Scan(&earned)
+	if err != nil {
+		return 0, fmt.Errorf("net worth earned: %w", err)
+	}
+	return earned, nil
+}
+
 // summarize derives the month's headline numbers purely from account balances,
 // which is the whole point of double-entry: nothing here is entered by hand.
-func summarize(accounts []AccountBalance, goal Goal, month string) Summary {
+// earnedCents comes from netWorthEarned — the change with equity entries
+// (opening balances) filtered out.
+func summarize(accounts []AccountBalance, goal Goal, month string, earnedCents int64) Summary {
 	var s Summary
 	for _, a := range accounts {
 		switch a.Type {
@@ -307,10 +343,11 @@ func summarize(accounts []AccountBalance, goal Goal, month string) Summary {
 		case TypeExpense:
 			s.ExpenseCents += a.ChangeCents
 		case TypeAsset, TypeLiability:
+			// The total includes everything — an opening balance is real money.
 			s.NetWorthCents += a.BalanceCents
-			s.NetWorthChange += a.ChangeCents
 		}
 	}
+	s.NetWorthChange = earnedCents
 	s.SurplusCents = s.IncomeCents - s.ExpenseCents
 
 	s.MonthsRemaining = MonthsBetween(month, goal.TargetMonth)

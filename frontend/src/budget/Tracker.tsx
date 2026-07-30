@@ -147,8 +147,17 @@ const Tracker: Component<Props> = (props) => {
             </span>
           </div>
           <div class="flex items-baseline justify-between">
-            <span class="text-[11px] uppercase tracking-wider text-gray-500">Added this month</span>
-            <span class="text-sm text-gray-200 tabular-nums">
+            <span
+              class="text-[11px] uppercase tracking-wider text-gray-500"
+              title="Excludes opening balances — those establish the books rather than adding to net worth">
+              Added this month
+            </span>
+            <span
+              class="text-sm tabular-nums"
+              classList={{
+                "text-[#f85149]": s()!.net_worth_change_cents < 0,
+                "text-gray-200": s()!.net_worth_change_cents >= 0,
+              }}>
               {money(s()!.net_worth_change_cents)}
             </span>
           </div>
@@ -167,27 +176,41 @@ const Tracker: Component<Props> = (props) => {
           </div>
         </div>
 
-        {/* Projections */}
+        {/* Projections — only meaningful while the pace is positive. */}
         <div class="border-t border-[#21262d] pt-3">
           <div class="text-[11px] uppercase tracking-wider text-gray-500 mb-1.5">
             At this pace, by {monthLabel(goal()!.target_month)}
           </div>
-          <div class="space-y-1 text-sm tabular-nums">
-            <div class="flex justify-between">
-              <span class="text-gray-400">No returns</span>
-              <span class="text-white">{moneyShort(store.projections().none)}</span>
+          <Show
+            when={s()!.net_worth_change_cents > 0}
+            fallback={
+              <p class="text-xs text-gray-500 leading-relaxed">
+                Net worth went{" "}
+                <span class="text-[#f85149]">
+                  down {money(Math.abs(s()!.net_worth_change_cents))}
+                </span>{" "}
+                this month, so there's no pace to project from yet. Compounding numbers off a
+                negative month would be noise.
+              </p>
+            }>
+            <div class="space-y-1 text-sm tabular-nums">
+              <div class="flex justify-between">
+                <span class="text-gray-400">No returns</span>
+                <span class="text-white">{moneyShort(store.projections().none)}</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-gray-400">Realistic · 7%</span>
+                <span class="text-white">{moneyShort(store.projections().realistic)}</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-gray-400">Optimistic · 10%</span>
+                <span class="text-white">{moneyShort(store.projections().optimistic)}</span>
+              </div>
             </div>
-            <div class="flex justify-between">
-              <span class="text-gray-400">Realistic · 7%</span>
-              <span class="text-white">{moneyShort(store.projections().realistic)}</span>
-            </div>
-            <div class="flex justify-between">
-              <span class="text-gray-400">Optimistic · 10%</span>
-              <span class="text-white">{moneyShort(store.projections().optimistic)}</span>
-            </div>
-          </div>
+          </Show>
           <p class="mt-2 text-[10px] text-gray-600 leading-relaxed">
-            Projected from this month's net-worth change, so it moves as you record entries.
+            Based on this month's change, excluding opening balances — those set the starting
+            position rather than adding to it.
           </p>
         </div>
       </Show>
