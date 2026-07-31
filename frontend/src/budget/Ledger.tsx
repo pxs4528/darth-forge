@@ -8,17 +8,23 @@ import {
   type Component,
 } from "solid-js";
 import type { Entry } from "./api";
-import { money, parseCents } from "./format";
-import { simpleShape, splitsFor, TYPE_META, type BudgetStore } from "./store";
+import { amount, parseCents } from "./format";
+import { signedAmount, simpleShape, splitsFor, type BudgetStore } from "./store";
 
-// The month's entries, newest first, each shown as "from → to". Keyboard:
-// j/k select, e edit, x-x delete. Inline edit saves with Enter, cancels with Esc.
+// The register — the centrepiece. A ledger page: date, description, the two
+// accounts money moved between, and the amount, aligned in the same columns on
+// every row. Keyboard: j/k select, e edit, x-x delete (documented in ?).
+//
+// Amounts are rendered in plain ink and let the minus carry direction. Green
+// and red are reserved for figures whose sign is the point — surplus, balance
+// changes — and a register that is mostly spending would be mostly red.
 
 type Props = { store: BudgetStore };
 
-const inputCls =
-  "bg-[#0d1117] border border-[#30363d] rounded px-2 py-1 text-sm text-white " +
-  "outline-none focus:border-[#3987e5] w-full min-w-0";
+/** Same column tracks on the header, the rows and the empty state. */
+const GRID =
+  "grid grid-cols-[3.5rem_minmax(0,1fr)_6.5rem_3.5rem] " +
+  "sm:grid-cols-[4rem_minmax(0,1fr)_minmax(0,15rem)_7rem_4.5rem] gap-3";
 
 const Ledger: Component<Props> = (props) => {
   const { store } = props;
@@ -43,11 +49,6 @@ const Ledger: Component<Props> = (props) => {
   createEffect(() => {
     if (selected() >= entries().length) setSelected(entries().length - 1);
   });
-
-  const accountColor = (id: number) => {
-    const a = store.accountById(id);
-    return a ? TYPE_META[a.type].color : "#5f5d58";
-  };
 
   const startEdit = (entry: Entry) => {
     const shape = simpleShape(entry);
@@ -141,163 +142,155 @@ const Ledger: Component<Props> = (props) => {
   });
 
   return (
-    <section class="bg-[#0d1117] border border-[#30363d] rounded-lg">
-      <div class="flex items-baseline justify-between px-4 pt-4 pb-2">
-        <h2 class="text-sm font-semibold text-gray-200">
-          Entries <span class="text-gray-500 font-normal">({entries().length})</span>
-        </h2>
-        <span class="text-[11px] text-gray-500 hidden sm:inline">
-          j/k select · e edit · x-x delete
-        </span>
+    <section>
+      {/* Column headers */}
+      <div class={GRID + " t-label ink-2 pb-2 rule-b"}>
+        <span>Date</span>
+        <span>Description</span>
+        <span class="hidden sm:block">From → to</span>
+        <span class="text-right">Amount</span>
+        <span aria-hidden="true" />
       </div>
 
-      <div ref={listRef} class="max-h-[28rem] overflow-y-auto">
-        <Show
-          when={entries().length > 0}
-          fallback={
-            <p class="px-4 pb-4 text-sm text-gray-500">
-              Nothing this month — record your first transaction above.
-            </p>
-          }>
+      <Show
+        when={entries().length > 0}
+        fallback={
+          <p class="t-meta ink-2 py-4">Nothing this month — record your first transaction above.</p>
+        }>
+        <div ref={listRef} class="ruled-rows max-h-[32rem] overflow-y-auto">
           <For each={entries()}>
-            {(entry, i) => {
-              const shape = () => simpleShape(entry);
-              return (
-                <Show
-                  when={editingId() !== entry.id}
-                  fallback={
-                    <div class="px-4 py-2 border-t border-[#21262d] bg-[#161b22]">
-                      <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 items-center">
-                        <input
-                          type="date"
-                          value={eDate()}
-                          onInput={(e) => setEDate(e.currentTarget.value)}
-                          class={inputCls + " tabular-nums"}
-                          aria-label="Date"
-                        />
-                        <input
-                          type="text"
-                          value={eDesc()}
-                          ref={(el) => setTimeout(() => el.focus())}
-                          onInput={(e) => setEDesc(e.currentTarget.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") saveEdit(entry);
-                            if (e.key === "Escape") cancelEdit();
-                          }}
-                          class={inputCls}
-                          aria-label="Description"
-                        />
-                        <input
-                          type="text"
-                          inputmode="decimal"
-                          value={eAmount()}
-                          onInput={(e) => setEAmount(e.currentTarget.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") saveEdit(entry);
-                            if (e.key === "Escape") cancelEdit();
-                          }}
-                          class={inputCls + " text-right tabular-nums"}
-                          aria-label="Amount"
-                        />
-                        <select
-                          value={String(eFrom())}
-                          onChange={(e) => setEFrom(Number(e.currentTarget.value))}
-                          class={inputCls + " truncate"}
-                          aria-label="From account">
-                          <For each={store.activeAccounts()}>
-                            {(a) => <option value={String(a.id)}>{a.name}</option>}
-                          </For>
-                        </select>
-                        <select
-                          value={String(eTo())}
-                          onChange={(e) => setETo(Number(e.currentTarget.value))}
-                          class={inputCls + " truncate"}
-                          aria-label="To account">
-                          <For each={store.activeAccounts()}>
-                            {(a) => <option value={String(a.id)}>{a.name}</option>}
-                          </For>
-                        </select>
-                        <div class="flex gap-1.5 col-span-2 sm:col-span-1">
-                          <button
-                            onClick={() => saveEdit(entry)}
-                            class="px-2.5 py-1 text-xs font-semibold rounded bg-[#238636] text-white hover:bg-[#2ea043]">
-                            Save
-                          </button>
-                          <button
-                            onClick={cancelEdit}
-                            class="px-2.5 py-1 text-xs rounded border border-[#30363d] text-gray-300 hover:bg-[#21262d]">
-                            Esc
-                          </button>
-                        </div>
+            {(entry, i) => (
+              <Show
+                when={editingId() !== entry.id}
+                fallback={
+                  <div class="py-2 bg-[#0d1117]">
+                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 items-center">
+                      <input
+                        type="date"
+                        value={eDate()}
+                        onInput={(e) => setEDate(e.currentTarget.value)}
+                        class="field tabular-nums"
+                        aria-label="Date"
+                      />
+                      <input
+                        type="text"
+                        value={eDesc()}
+                        ref={(el) => setTimeout(() => el.focus())}
+                        onInput={(e) => setEDesc(e.currentTarget.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") saveEdit(entry);
+                          if (e.key === "Escape") cancelEdit();
+                        }}
+                        class="field"
+                        aria-label="Description"
+                      />
+                      <input
+                        type="text"
+                        inputmode="decimal"
+                        value={eAmount()}
+                        onInput={(e) => setEAmount(e.currentTarget.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") saveEdit(entry);
+                          if (e.key === "Escape") cancelEdit();
+                        }}
+                        class="field text-right tabular-nums"
+                        aria-label="Amount"
+                      />
+                      <select
+                        value={String(eFrom())}
+                        onChange={(e) => setEFrom(Number(e.currentTarget.value))}
+                        class="field truncate"
+                        aria-label="From account">
+                        <For each={store.activeAccounts()}>
+                          {(a) => <option value={String(a.id)}>{a.name}</option>}
+                        </For>
+                      </select>
+                      <select
+                        value={String(eTo())}
+                        onChange={(e) => setETo(Number(e.currentTarget.value))}
+                        class="field truncate"
+                        aria-label="To account">
+                        <For each={store.activeAccounts()}>
+                          {(a) => <option value={String(a.id)}>{a.name}</option>}
+                        </For>
+                      </select>
+                      <div class="flex gap-1.5 col-span-2 sm:col-span-1">
+                        <button onClick={() => saveEdit(entry)} class="btn">
+                          save
+                        </button>
+                        <button onClick={cancelEdit} class="btn">
+                          esc
+                        </button>
                       </div>
-                      <Show when={eError()}>
-                        <p class="mt-1 text-xs text-[#f85149]">{eError()}</p>
-                      </Show>
                     </div>
-                  }>
-                  <div
-                    data-row={i()}
-                    onClick={() => setSelected(i())}
-                    onDblClick={() => startEdit(entry)}
-                    class={
-                      "group px-4 py-1.5 border-t border-[#21262d] grid grid-cols-[3.5rem_1fr_auto] sm:grid-cols-[4rem_minmax(0,1fr)_minmax(0,14rem)_6.5rem_auto] gap-2 items-center text-sm cursor-default " +
-                      (selected() === i() ? "bg-[#1c2430]" : "hover:bg-[#161b22]")
-                    }>
-                    <span class="text-gray-400 tabular-nums text-xs">{entry.date.slice(5)}</span>
-                    <span class="text-white truncate">{entry.description}</span>
-
-                    <span class="hidden sm:flex items-center gap-1.5 text-xs text-gray-400 truncate">
-                      <Show
-                        when={shape()}
-                        fallback={<span class="text-gray-500">split entry</span>}>
-                        {(s) => (
-                          <>
-                            <span
-                              class="w-1.5 h-1.5 rounded-full shrink-0"
-                              style={{ background: accountColor(s().fromId) }}
-                            />
-                            <span class="truncate">{store.accountName(s().fromId)}</span>
-                            <span class="text-gray-600 shrink-0">→</span>
-                            <span
-                              class="w-1.5 h-1.5 rounded-full shrink-0"
-                              style={{ background: accountColor(s().toId) }}
-                            />
-                            <span class="truncate">{store.accountName(s().toId)}</span>
-                          </>
-                        )}
-                      </Show>
-                    </span>
-
-                    <span class="text-right tabular-nums text-white">
-                      {money(shape()?.amountCents ?? 0)}
-                    </span>
-
-                    <span class="flex gap-1 justify-end opacity-0 group-hover:opacity-100 focus-within:opacity-100">
-                      <button
-                        onClick={() => startEdit(entry)}
-                        class="px-1.5 py-0.5 text-[11px] rounded border border-[#30363d] text-gray-300 hover:bg-[#21262d]"
-                        aria-label={`Edit ${entry.description}`}>
-                        edit
-                      </button>
-                      <button
-                        onClick={() => requestDelete(entry.id)}
-                        class={
-                          "px-1.5 py-0.5 text-[11px] rounded border " +
-                          (confirmId() === entry.id
-                            ? "border-[#d03b3b] bg-[#d03b3b] text-white"
-                            : "border-[#30363d] text-gray-300 hover:border-[#d03b3b] hover:text-[#f85149]")
-                        }
-                        aria-label={`Delete ${entry.description}`}>
-                        {confirmId() === entry.id ? "sure?" : "del"}
-                      </button>
-                    </span>
+                    <Show when={eError()}>
+                      <p class="mt-1.5 t-meta neg">{eError()}</p>
+                    </Show>
                   </div>
-                </Show>
-              );
-            }}
+                }>
+                <div
+                  data-row={i()}
+                  onClick={() => setSelected(i())}
+                  onDblClick={() => startEdit(entry)}
+                  class={
+                    GRID +
+                    " group items-baseline py-1.5 t-meta cursor-default " +
+                    (selected() === i() ? "bg-[#161b22]" : "hover:bg-[#0d1117]")
+                  }>
+                  <span class="ink-2 tabular-nums">{entry.date.slice(5).replace("-", "/")}</span>
+                  <span class="ink truncate">{entry.description}</span>
+
+                  <span class="hidden sm:block ink-2 truncate">
+                    <Show when={simpleShape(entry)} fallback={<span>split entry</span>}>
+                      {(s) => (
+                        <>
+                          {store.accountName(s().fromId)}
+                          <span class="px-1 text-[#484f58]">→</span>
+                          {store.accountName(s().toId)}
+                        </>
+                      )}
+                    </Show>
+                  </span>
+
+                  <span class="text-right tabular-nums ink">
+                    {amount(signedAmount(entry, store.accountById))}
+                  </span>
+
+                  <span class="flex gap-1 justify-end sm:opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                    <button
+                      onClick={() => startEdit(entry)}
+                      class="btn px-1.5 py-0.5"
+                      aria-label={`Edit ${entry.description}`}>
+                      ed
+                    </button>
+                    <button
+                      onClick={() => requestDelete(entry.id)}
+                      class="btn px-1.5 py-0.5"
+                      classList={{ "btn-armed": confirmId() === entry.id }}
+                      aria-label={`Delete ${entry.description}`}>
+                      {confirmId() === entry.id ? "sure?" : "del"}
+                    </button>
+                  </span>
+                </div>
+              </Show>
+            )}
           </For>
-        </Show>
-      </div>
+        </div>
+
+        {/*
+         * Closes the page. Deliberately no money total: summing the register
+         * would count a Checking → HYSA transfer as income, and the figures
+         * that do mean something (income, spending, surplus) are in the band.
+         */}
+        <div class={GRID + " rule-strong-t pt-3 mt-1 t-label ink-2"}>
+          <span class="col-span-2">
+            {entries().length} {entries().length === 1 ? "entry" : "entries"}
+          </span>
+          <span class="hidden sm:block" aria-hidden="true" />
+          <span aria-hidden="true" />
+          <span aria-hidden="true" />
+        </div>
+      </Show>
     </section>
   );
 };

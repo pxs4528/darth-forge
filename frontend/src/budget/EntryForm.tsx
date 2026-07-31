@@ -14,10 +14,6 @@ type Props = {
   registerFocus: (fn: () => void) => void;
 };
 
-const inputCls =
-  "bg-[#0d1117] border border-[#30363d] rounded px-2.5 py-2 text-sm text-white " +
-  "outline-none focus:border-[#3987e5] placeholder-gray-600 w-full min-w-0";
-
 /** Groups accounts under <optgroup> headings so a long list stays scannable. */
 const AccountOptions: Component<{ accounts: AccountBalance[] }> = (props) => {
   const groups = () => {
@@ -181,11 +177,8 @@ const EntryForm: Component<Props> = (props) => {
   };
 
   return (
-    <section class="bg-[#0d1117] border border-[#30363d] rounded-lg p-4">
-      <div class="flex items-baseline justify-between mb-3">
-        <h2 class="text-sm font-semibold text-gray-200">Record a transaction</h2>
-        <span class="text-[11px] text-gray-500">Enter to add · date &amp; accounts stick</span>
-      </div>
+    <section class="pb-5 mb-4 rule-b">
+      <h2 class="t-label ink-2 mb-2">Record a transaction</h2>
 
       <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 items-start">
         <input
@@ -193,7 +186,7 @@ const EntryForm: Component<Props> = (props) => {
           value={date()}
           onInput={(e) => setDate(e.currentTarget.value)}
           onKeyDown={onFieldKey}
-          class={inputCls + " tabular-nums"}
+          class="field tabular-nums"
           aria-label="Date"
         />
 
@@ -206,13 +199,13 @@ const EntryForm: Component<Props> = (props) => {
             onKeyDown={onDescKey}
             onBlur={() => window.setTimeout(closeSuggest, 150)}
             placeholder="Description"
-            class={inputCls}
+            class="field"
             autocomplete="off"
             spellcheck={false}
             aria-label="Description"
           />
           <Show when={suggestOpen()}>
-            <ul class="absolute z-20 mt-1 w-full bg-[#161b22] border border-[#30363d] rounded shadow-xl overflow-hidden">
+            <ul class="absolute z-20 w-full bg-[#161b22] border border-[color:var(--rule-strong)] shadow-xl overflow-hidden">
               <For each={suggestions()}>
                 {(s, i) => (
                   <li>
@@ -223,13 +216,11 @@ const EntryForm: Component<Props> = (props) => {
                         applySuggestion(s);
                       }}
                       class={
-                        "w-full text-left px-2.5 py-1.5 text-sm flex justify-between gap-2 " +
+                        "w-full text-left px-2 py-1.5 t-meta flex justify-between gap-2 " +
                         (i() === suggestIndex() ? "bg-[#21262d]" : "hover:bg-[#21262d]")
                       }>
-                      <span class="text-white truncate">{s.description}</span>
-                      <span class="text-[11px] text-gray-400 shrink-0">
-                        {store.accountName(s.to_account_id)}
-                      </span>
+                      <span class="ink truncate">{s.description}</span>
+                      <span class="ink-2 shrink-0">{store.accountName(s.to_account_id)}</span>
                     </button>
                   </li>
                 )}
@@ -245,7 +236,7 @@ const EntryForm: Component<Props> = (props) => {
           onInput={(e) => setAmount(e.currentTarget.value)}
           onKeyDown={onFieldKey}
           placeholder="$0.00"
-          class={inputCls + " text-right tabular-nums"}
+          class="field text-right tabular-nums"
           aria-label="Amount"
         />
 
@@ -253,7 +244,7 @@ const EntryForm: Component<Props> = (props) => {
           value={String(fromId())}
           onChange={(e) => setFromId(Number(e.currentTarget.value))}
           onKeyDown={onFieldKey}
-          class={inputCls + " truncate"}
+          class="field truncate"
           aria-label="From account">
           <option value="0" disabled>
             From…
@@ -265,7 +256,7 @@ const EntryForm: Component<Props> = (props) => {
           value={String(toId())}
           onChange={(e) => setToId(Number(e.currentTarget.value))}
           onKeyDown={onFieldKey}
-          class={inputCls + " truncate"}
+          class="field truncate"
           aria-label="To account">
           <option value="0" disabled>
             To…
@@ -277,20 +268,19 @@ const EntryForm: Component<Props> = (props) => {
           type="button"
           onClick={submit}
           disabled={busy()}
-          class="px-4 py-2 text-sm font-semibold rounded bg-[#238636] text-white hover:bg-[#2ea043] disabled:opacity-50 w-full sm:w-auto col-span-2 sm:col-span-1">
+          class="btn w-full sm:w-auto col-span-2 sm:col-span-1 py-2">
           {busy() ? "…" : "Add"}
         </button>
       </div>
 
       <Show when={error()}>
-        <p class="mt-2 text-xs text-[#f85149]">{error()}</p>
+        <p class="mt-2 t-meta neg">{error()}</p>
       </Show>
 
-      <p class="mt-2 text-[11px] text-gray-600 leading-relaxed">
-        Paycheck: <span class="text-gray-500">Paycheck → Checking</span> · Card purchase:{" "}
-        <span class="text-gray-500">Discover → Groceries</span> · Card payment:{" "}
-        <span class="text-gray-500">Checking → Discover</span> · Save:{" "}
-        <span class="text-gray-500">Checking → HYSA</span>
+      {/* Not a keyboard hint — this is how the double-entry shape maps to real
+          transactions, which is the one thing the form can't show on its own. */}
+      <p class="mt-2.5 t-meta ink-2 opacity-70 leading-relaxed">
+        Paycheck → Checking · Discover → Groceries · Checking → Discover · Checking → HYSA
       </p>
     </section>
   );

@@ -1,26 +1,19 @@
-import { createSignal, Show, type Component } from "solid-js";
-import { money, monthLabel, moneyShort, parseCents } from "./format";
+import { Show, type Component } from "solid-js";
+import { money, monthLabel, moneyShort } from "./format";
 import type { BudgetStore } from "./store";
 
-// Progress toward the goal. Net worth is derived from the ledger, so the only
-// editable things here are the target itself and the date you want to hit it.
+// Pace toward the goal, pinned in the sidebar. Where you *are* is the masthead's
+// job — the hero figure and the progress rule — so this panel only answers
+// "am I adding fast enough, and where does that land me".
+//
+// The goal amount and target month are edited in the masthead.
 
 type Props = { store: BudgetStore };
 
 const Tracker: Component<Props> = (props) => {
   const { store } = props;
-  const [editing, setEditing] = createSignal<"amount" | "date" | null>(null);
-  const [draft, setDraft] = createSignal("");
 
   const s = () => store.summary();
-  const goal = () => store.goal();
-
-  const pct = () => {
-    const sum = s();
-    const g = goal();
-    if (!sum || !g || g.goal_cents <= 0) return 0;
-    return Math.max(0, Math.min(100, (sum.goal_net_worth_cents / g.goal_cents) * 100));
-  };
 
   /** Are we adding at least the pace the goal needs? */
   const onTrack = () => {
@@ -29,193 +22,77 @@ const Tracker: Component<Props> = (props) => {
     return sum.net_worth_change_cents >= sum.target_monthly_cents;
   };
 
-  const commit = async () => {
-    const g = goal();
-    const mode = editing();
-    setEditing(null);
-    if (!g || !mode) return;
-
-    if (mode === "amount") {
-      const cents = parseCents(draft());
-      if (cents === null || cents <= 0 || cents === g.goal_cents) return;
-      await store
-        .saveGoal({ ...g, goal_cents: cents })
-        .catch((e) => store.flash(e instanceof Error ? e.message : "Failed to save goal"));
-    } else {
-      const month = draft().trim();
-      if (!/^\d{4}-\d{2}$/.test(month) || month === g.target_month) return;
-      await store
-        .saveGoal({ ...g, target_month: month })
-        .catch((e) => store.flash(e instanceof Error ? e.message : "Failed to save goal"));
-    }
+  const gap = () => {
+    const sum = s();
+    if (!sum) return 0;
+    return sum.net_worth_change_cents - sum.target_monthly_cents;
   };
 
-  const editCls =
-    "bg-[#161b22] border border-[#3987e5] rounded px-1.5 py-0.5 text-right tabular-nums text-white outline-none";
-
   return (
-    <section
-      id="tracker"
-      class="bg-[#0d1117] border border-[#30363d] rounded-lg p-4 space-y-4 lg:sticky lg:top-4">
-      <Show when={s() && goal()} fallback={<p class="text-sm text-gray-500">Loading…</p>}>
-        <div class="flex items-baseline justify-between">
-          <h2 class="text-sm font-semibold text-gray-200">
-            <Show
-              when={editing() === "amount"}
-              fallback={
-                <button
-                  onClick={() => {
-                    setDraft((goal()!.goal_cents / 100).toFixed(2));
-                    setEditing("amount");
-                  }}
-                  class="hover:text-white underline decoration-dotted underline-offset-2">
-                  {moneyShort(goal()!.goal_cents)} goal
-                </button>
-              }>
-              <input
-                type="text"
-                inputmode="decimal"
-                value={draft()}
-                ref={(el) => setTimeout(() => el.focus())}
-                onInput={(e) => setDraft(e.currentTarget.value)}
-                onBlur={commit}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") commit();
-                  if (e.key === "Escape") setEditing(null);
-                }}
-                class={editCls + " w-28 text-sm"}
-                aria-label="Goal amount"
-              />
-            </Show>
-          </h2>
-          <span class="text-[11px] text-gray-500 tabular-nums">
-            <Show
-              when={editing() === "date"}
-              fallback={
-                <button
-                  onClick={() => {
-                    setDraft(goal()!.target_month);
-                    setEditing("date");
-                  }}
-                  class="hover:text-gray-300 underline decoration-dotted underline-offset-2">
-                  by {monthLabel(goal()!.target_month)}
-                </button>
-              }>
-              <input
-                type="month"
-                value={draft()}
-                ref={(el) => setTimeout(() => el.focus())}
-                onInput={(e) => setDraft(e.currentTarget.value)}
-                onBlur={commit}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") commit();
-                  if (e.key === "Escape") setEditing(null);
-                }}
-                class={editCls + " text-xs"}
-                aria-label="Target month"
-              />
-            </Show>
-          </span>
-        </div>
+    <section id="tracker" class="lg:sticky lg:top-4">
+      <Show when={s() && store.goal()} fallback={<p class="t-meta ink-2">Loading…</p>}>
+        <h2 class="t-label ink-2 pb-2 rule-b">Pace</h2>
 
-        {/* Headline */}
-        <div>
-          <div class="text-2xl font-semibold text-white tabular-nums">
-            {money(s()!.goal_net_worth_cents)}
-          </div>
-          <div class="mt-1.5 h-2 rounded-full bg-[#21262d] overflow-hidden">
-            <div
-              class="h-full rounded-full bg-[#3987e5] transition-all"
-              style={{ width: `${pct()}%` }}
-            />
-          </div>
-          <div class="mt-1 flex justify-between text-[11px] text-gray-500 tabular-nums">
-            <span>{Math.round(pct())}% there</span>
-            <span>
-              {moneyShort(Math.max(0, goal()!.goal_cents - s()!.goal_net_worth_cents))} to go ·{" "}
-              {s()!.months_remaining} mo
-            </span>
-          </div>
-        </div>
-
-        {/* Pace */}
-        <div class="border-t border-[#21262d] pt-3 space-y-2">
-          <div class="flex items-baseline justify-between">
-            <span class="text-[11px] uppercase tracking-wider text-gray-500">Need per month</span>
-            <span class="text-lg font-semibold text-white tabular-nums">
-              {money(s()!.target_monthly_cents)}
-            </span>
-          </div>
-          <div class="flex items-baseline justify-between">
-            <span
-              class="text-[11px] uppercase tracking-wider text-gray-500"
-              title="Excludes opening balances — those establish the books rather than adding to net worth">
-              Added this month
-            </span>
-            <span
-              class="text-sm tabular-nums"
-              classList={{
-                "text-[#f85149]": s()!.net_worth_change_cents < 0,
-                "text-gray-200": s()!.net_worth_change_cents >= 0,
-              }}>
-              {money(s()!.net_worth_change_cents)}
-            </span>
-          </div>
-          <div
-            class="rounded px-2.5 py-1.5 text-sm font-semibold flex items-center gap-2"
-            style={{
-              background: onTrack() ? "rgba(12,163,12,0.12)" : "rgba(208,59,59,0.12)",
-              color: onTrack() ? "#3fb950" : "#f85149",
-            }}>
-            <span aria-hidden="true">{onTrack() ? "✓" : "✗"}</span>
-            {onTrack()
-              ? `On pace (+${money(s()!.net_worth_change_cents - s()!.target_monthly_cents)})`
-              : `Behind by ${money(
-                  Math.abs(s()!.net_worth_change_cents - s()!.target_monthly_cents)
-                )}`}
-          </div>
+        <div class="ruled-rows">
+          <Row label="Need per month" value={money(s()!.target_monthly_cents)} figure />
+          <Row
+            label="Added this month"
+            hint="Excludes opening balances — those establish the books rather than adding to net worth"
+            value={money(s()!.net_worth_change_cents)}
+            tone={s()!.net_worth_change_cents < 0 ? "neg" : undefined}
+          />
+          <Row
+            label={onTrack() ? "Ahead by" : "Behind by"}
+            value={money(Math.abs(gap()))}
+            tone={onTrack() ? "pos" : "neg"}
+          />
         </div>
 
         {/* Projections — only meaningful while the pace is positive. */}
-        <div class="border-t border-[#21262d] pt-3">
-          <div class="text-[11px] uppercase tracking-wider text-gray-500 mb-1.5">
-            At this pace, by {monthLabel(goal()!.target_month)}
+        <h2 class="t-label ink-2 pt-5 pb-2 rule-b">
+          At this pace, by {monthLabel(store.goal()!.target_month)}
+        </h2>
+        <Show
+          when={s()!.net_worth_change_cents > 0}
+          fallback={
+            <p class="t-meta ink-2 py-2 leading-relaxed">
+              Net worth went{" "}
+              <span class="neg">down {money(Math.abs(s()!.net_worth_change_cents))}</span> this
+              month, so there's no pace to project from yet. Compounding numbers off a negative
+              month would be noise.
+            </p>
+          }>
+          <div class="ruled-rows">
+            <Row label="No returns" value={moneyShort(store.projections().none)} />
+            <Row label="Realistic · 7%" value={moneyShort(store.projections().realistic)} />
+            <Row label="Optimistic · 10%" value={moneyShort(store.projections().optimistic)} />
           </div>
-          <Show
-            when={s()!.net_worth_change_cents > 0}
-            fallback={
-              <p class="text-xs text-gray-500 leading-relaxed">
-                Net worth went{" "}
-                <span class="text-[#f85149]">
-                  down {money(Math.abs(s()!.net_worth_change_cents))}
-                </span>{" "}
-                this month, so there's no pace to project from yet. Compounding numbers off a
-                negative month would be noise.
-              </p>
-            }>
-            <div class="space-y-1 text-sm tabular-nums">
-              <div class="flex justify-between">
-                <span class="text-gray-400">No returns</span>
-                <span class="text-white">{moneyShort(store.projections().none)}</span>
-              </div>
-              <div class="flex justify-between">
-                <span class="text-gray-400">Realistic · 7%</span>
-                <span class="text-white">{moneyShort(store.projections().realistic)}</span>
-              </div>
-              <div class="flex justify-between">
-                <span class="text-gray-400">Optimistic · 10%</span>
-                <span class="text-white">{moneyShort(store.projections().optimistic)}</span>
-              </div>
-            </div>
-          </Show>
-          <p class="mt-2 text-[10px] text-gray-600 leading-relaxed">
-            Based on this month's change, excluding opening balances — those set the starting
-            position rather than adding to it.
-          </p>
-        </div>
+        </Show>
+
+        <p class="mt-3 t-meta ink-2 leading-relaxed opacity-70">
+          Based on this month's change, excluding opening balances — those set the starting position
+          rather than adding to it.
+        </p>
       </Show>
     </section>
   );
 };
+
+const Row: Component<{
+  label: string;
+  value: string;
+  hint?: string;
+  figure?: boolean;
+  tone?: "pos" | "neg";
+}> = (p) => (
+  <div class="flex items-baseline justify-between gap-3 py-1.5">
+    <span class="t-meta ink-2" title={p.hint}>
+      {p.label}
+    </span>
+    <span class={(p.figure ? "t-figure " : "t-meta ") + "tabular-nums " + (p.tone ?? "ink")}>
+      {p.value}
+    </span>
+  </div>
+);
 
 export default Tracker;

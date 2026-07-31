@@ -3,33 +3,48 @@
 
 export const centsToDollars = (cents: number): number => cents / 100;
 
-/** "$1,234.56" */
-export const money = (cents: number): string =>
-  (cents < 0 ? "-" : "") +
-  "$" +
-  Math.abs(cents / 100).toLocaleString("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+/**
+ * A true minus (U+2212), not a hyphen. In a column of tabular figures a hyphen
+ * is too short and sits too low to read as a sign.
+ */
+const MINUS = "−";
+
+const grouped = (cents: number, digits: number): string =>
+  (Math.abs(cents) / 100).toLocaleString("en-US", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
   });
+
+/** "$1,234.56" */
+export const money = (cents: number): string => (cents < 0 ? MINUS : "") + "$" + grouped(cents, 2);
+
+/**
+ * "1,234.56" — for ruled money columns, where the header says AMOUNT and a
+ * dollar sign on every row is repetition rather than information.
+ */
+export const amount = (cents: number): string => (cents < 0 ? MINUS : "") + grouped(cents, 2);
 
 /** "$1,235" — for headline figures where cents are noise. */
 export const moneyShort = (cents: number): string =>
-  (cents < 0 ? "-" : "") + "$" + Math.round(Math.abs(cents) / 100).toLocaleString("en-US");
+  (cents < 0 ? MINUS : "") + "$" + Math.round(Math.abs(cents) / 100).toLocaleString("en-US");
 
 /** "$12.3k" — for chart axes. */
 export const moneyAxis = (cents: number): string => {
   const dollars = Math.abs(cents) / 100;
-  const sign = cents < 0 ? "-" : "";
+  const sign = cents < 0 ? MINUS : "";
   if (dollars >= 1000) return `${sign}$${(dollars / 1000).toFixed(dollars >= 10000 ? 0 : 1)}k`;
   return `${sign}$${Math.round(dollars)}`;
 };
 
 /**
- * Parses user input into cents. Accepts "12", "12.5", "$1,234.56", "1 234".
- * Returns null when the input isn't a usable number.
+ * Parses user input into cents. Accepts "12", "12.5", "$1,234.56", "1 234",
+ * and a pasted-back "−12.50" carrying the true minus we render.
  */
 export const parseCents = (input: string): number | null => {
-  const cleaned = input.replace(/[$,\s]/g, "").trim();
+  const cleaned = input
+    .replace(/[$,\s]/g, "")
+    .replace(/−/g, "-")
+    .trim();
   if (cleaned === "" || cleaned === "-") return null;
   const value = Number(cleaned);
   if (!Number.isFinite(value)) return null;

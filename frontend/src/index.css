@@ -48,9 +48,152 @@ body {
     sans-serif !important;
 }
 
+/*
+ * Ledger-print tokens. The direction is a book of accounts, not a dashboard:
+ * columns and hairlines do the organising, so the type scale needs real jumps
+ * between steps and the grays need a hierarchy rather than five interchangeable
+ * values. See docs/budget-design.md.
+ */
+.budget-app {
+  --fs-hero: 44px;
+  --fs-figure: 22px;
+  --fs-body: 15px;
+  --fs-meta: 13px;
+  --fs-label: 11px;
+
+  --ink: #e6edf3;
+  --ink-2: #8b949e;
+  --rule: #21262d;
+  --rule-strong: #30363d;
+
+  /* Reserved strictly for money direction — never decoration. */
+  --pos: #3fb950;
+  --neg: #f85149;
+
+  line-height: 1.5;
+}
+
 /* Money and dates align in columns; everything else uses proportional figures. */
 .budget-app .tabular-nums {
   font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* ── type scale ── */
+
+.budget-app .t-hero {
+  font-size: var(--fs-hero);
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.budget-app .t-figure {
+  font-size: var(--fs-figure);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.budget-app .t-body {
+  font-size: var(--fs-body);
+  font-weight: 400;
+}
+
+.budget-app .t-meta {
+  font-size: var(--fs-meta);
+  font-weight: 400;
+}
+
+.budget-app .t-label {
+  font-size: var(--fs-label);
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* ── ink ── */
+
+.budget-app .ink {
+  color: var(--ink);
+}
+.budget-app .ink-2 {
+  color: var(--ink-2);
+}
+.budget-app .pos {
+  color: var(--pos);
+}
+.budget-app .neg {
+  color: var(--neg);
+}
+
+/* ── rules ── */
+
+.budget-app .rule-t {
+  border-top: 1px solid var(--rule);
+}
+.budget-app .rule-b {
+  border-bottom: 1px solid var(--rule);
+}
+.budget-app .rule-strong-t {
+  border-top: 1px solid var(--rule-strong);
+}
+.budget-app .rule-strong-b {
+  border-bottom: 1px solid var(--rule-strong);
+}
+
+/*
+ * Rows are ruled between, never above the first or below the last — the
+ * hairline is a separator, not a box.
+ */
+.budget-app .ruled-rows > * + * {
+  border-top: 1px solid var(--rule);
+}
+
+/* Ghost buttons. Green and red are money signals, so controls stay bordered. */
+.budget-app .btn {
+  border: 1px solid var(--rule-strong);
+  color: var(--ink-2);
+  padding: 0.3rem 0.6rem;
+  font-size: var(--fs-label);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.budget-app .btn:hover:not(:disabled) {
+  color: var(--ink);
+  border-color: #484f58;
+}
+.budget-app .btn:disabled {
+  opacity: 0.4;
+}
+
+/*
+ * Armed destructive action. A real class rather than a utility override:
+ * .budget-app .btn already outranks a bare Tailwind border-colour utility.
+ */
+.budget-app .btn-armed,
+.budget-app .btn-armed:hover {
+  border-color: #d03b3b;
+  color: var(--neg);
+}
+
+/* Form fields sit on a ruled baseline rather than in rounded pills. */
+.budget-app .field {
+  background: #0d1117;
+  border: 1px solid var(--rule-strong);
+  color: var(--ink);
+  padding: 0.35rem 0.5rem;
+  font-size: var(--fs-meta);
+  outline: none;
+  width: 100%;
+  min-width: 0;
+}
+.budget-app .field:focus {
+  border-color: #3987e5;
+}
+.budget-app .field::placeholder {
+  color: #4d5560;
 }
 
 .ascii-art {
