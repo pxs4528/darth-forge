@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { displayBalance, simpleShape, splitsFor } from "./store";
+import type { Account, AccountType } from "./api";
+import { displayBalance, signedAmount, simpleShape, splitsFor } from "./store";
 
 describe("splitsFor", () => {
   it("always produces a balanced pair", () => {
@@ -43,6 +44,43 @@ describe("simpleShape", () => {
       { account_id: 2, amount_cents: 5000 },
     ];
     expect(simpleShape({ splits })).toBeNull();
+  });
+});
+
+describe("signedAmount", () => {
+  // 1 checking, 2 paycheck, 3 groceries, 4 savings.
+  const types: Record<number, AccountType> = {
+    1: "asset",
+    2: "income",
+    3: "expense",
+    4: "asset",
+  };
+  const lookup = (id: number): Account | undefined =>
+    types[id] ? ({ id, name: `acct-${id}`, type: types[id] } as Account) : undefined;
+
+  it("reads a paycheck as money in", () => {
+    expect(signedAmount({ splits: splitsFor(2, 1, 287592) }, lookup)).toBe(287592);
+  });
+
+  it("reads a card purchase as money out", () => {
+    expect(signedAmount({ splits: splitsFor(1, 3, 4210) }, lookup)).toBe(-4210);
+  });
+
+  it("keeps a transfer positive — you still have the money", () => {
+    expect(signedAmount({ splits: splitsFor(1, 4, 100000) }, lookup)).toBe(100000);
+  });
+
+  it("sums the destination sides of a multi-split entry", () => {
+    const splits = [
+      { account_id: 1, amount_cents: -10000 },
+      { account_id: 3, amount_cents: 6000 }, // groceries
+      { account_id: 4, amount_cents: 4000 }, // savings
+    ];
+    expect(signedAmount({ splits }, lookup)).toBe(-6000 + 4000);
+  });
+
+  it("does not flip the sign when the account is unknown", () => {
+    expect(signedAmount({ splits: splitsFor(1, 99, 5000) }, lookup)).toBe(5000);
   });
 });
 

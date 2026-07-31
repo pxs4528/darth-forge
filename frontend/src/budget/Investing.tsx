@@ -1,5 +1,5 @@
 import { createSignal, For, Show, type Component } from "solid-js";
-import { money, moneyShort } from "./format";
+import { amount, money, moneyShort } from "./format";
 import { CLASS_COLORS, CLASS_LABELS, type BudgetStore } from "./store";
 
 // Inputs to an allocation decision — where your money currently sits, how much
@@ -7,6 +7,8 @@ import { CLASS_COLORS, CLASS_LABELS, type BudgetStore } from "./store";
 // descriptive: it reports your position and does not suggest what to buy.
 
 type Props = { store: BudgetStore };
+
+const GRID = "grid grid-cols-[minmax(0,1fr)_3.5rem_6.5rem_5.5rem] gap-3";
 
 const Investing: Component<Props> = (props) => {
   const { store } = props;
@@ -36,72 +38,74 @@ const Investing: Component<Props> = (props) => {
   };
 
   return (
-    <section class="bg-[#0d1117] border border-[#30363d] rounded-lg p-4 space-y-4">
-      <h2 class="text-sm font-semibold text-gray-200">Allocation &amp; liquidity</h2>
+    <section>
+      {/* Where the money sits — one rule split by class, then the figures. */}
+      <div class="flex h-[3px] bg-[color:var(--rule)]">
+        <For each={store.allocation()}>
+          {(row) => (
+            <Show when={row.balanceCents > 0}>
+              <div
+                class="h-full"
+                style={{
+                  width: `${pctOf(row.balanceCents)}%`,
+                  background: CLASS_COLORS[row.key],
+                }}
+                title={`${CLASS_LABELS[row.key]} ${money(row.balanceCents)}`}
+              />
+            </Show>
+          )}
+        </For>
+      </div>
 
-      {/* Where the money sits */}
-      <div>
-        <div class="flex h-2.5 rounded-full overflow-hidden bg-[#21262d]">
-          <For each={store.allocation()}>
-            {(row) => (
-              <Show when={row.balanceCents > 0}>
-                <div
-                  class="h-full"
-                  style={{
-                    width: `${pctOf(row.balanceCents)}%`,
-                    background: CLASS_COLORS[row.key],
-                  }}
-                  title={`${CLASS_LABELS[row.key]} ${money(row.balanceCents)}`}
+      <div class={GRID + " t-label ink-2 pt-3 pb-2 rule-b"}>
+        <span>Asset class</span>
+        <span class="text-right">Share</span>
+        <span class="text-right">Balance</span>
+        <span class="text-right">This month</span>
+      </div>
+
+      <div class="ruled-rows">
+        <For each={store.allocation()}>
+          {(row) => (
+            <div class={GRID + " py-1.5 t-meta items-baseline"}>
+              <span class="ink truncate">
+                {/* The only decorative colour here, and it keys the rule above. */}
+                <span
+                  class="inline-block w-2 h-[3px] mr-2 align-middle"
+                  style={{ background: CLASS_COLORS[row.key] }}
+                  aria-hidden="true"
                 />
-              </Show>
-            )}
-          </For>
-        </div>
+                {CLASS_LABELS[row.key]}
+              </span>
+              <span class="text-right tabular-nums ink-2">
+                {Math.round(pctOf(row.balanceCents))}%
+              </span>
+              <span class="text-right tabular-nums ink">{amount(row.balanceCents)}</span>
+              <span
+                class="text-right tabular-nums"
+                classList={{
+                  pos: row.changeCents > 0,
+                  neg: row.changeCents < 0,
+                  "ink-2 opacity-50": row.changeCents === 0,
+                }}>
+                {row.changeCents === 0
+                  ? "—"
+                  : (row.changeCents > 0 ? "+" : "") + moneyShort(row.changeCents)}
+              </span>
+            </div>
+          )}
+        </For>
+      </div>
 
-        <table class="w-full text-[13px] tabular-nums mt-2">
-          <tbody>
-            <For each={store.allocation()}>
-              {(row) => (
-                <tr class="border-t border-[#21262d] first:border-t-0">
-                  <td class="text-left py-1 text-gray-300">
-                    <span
-                      class="inline-block w-1.5 h-1.5 rounded-full mr-1.5 align-middle"
-                      style={{ background: CLASS_COLORS[row.key] }}
-                    />
-                    {CLASS_LABELS[row.key]}
-                  </td>
-                  <td class="text-right text-gray-500 w-14">
-                    {Math.round(pctOf(row.balanceCents))}%
-                  </td>
-                  <td class="text-right text-white w-24">{money(row.balanceCents)}</td>
-                  <td
-                    class="text-right w-24"
-                    classList={{
-                      "text-[#3fb950]": row.changeCents > 0,
-                      "text-[#f85149]": row.changeCents < 0,
-                      "text-gray-600": row.changeCents === 0,
-                    }}>
-                    {row.changeCents === 0
-                      ? "—"
-                      : (row.changeCents > 0 ? "+" : "") + moneyShort(row.changeCents)}
-                  </td>
-                </tr>
-              )}
-            </For>
-            <tr class="border-t-2 border-[#30363d]">
-              <td class="text-left py-1 text-gray-400 text-[11px] uppercase tracking-wider">
-                Total assets
-              </td>
-              <td />
-              <td class="text-right font-semibold text-white">{money(total())}</td>
-              <td class="text-right text-[10px] text-gray-600">this mo</td>
-            </tr>
-          </tbody>
-        </table>
+      <div class={GRID + " rule-strong-t pt-3 mt-1 items-baseline"}>
+        <span class="t-label ink">Total assets</span>
+        <span aria-hidden="true" />
+        <span class="text-right t-figure ink">{amount(total())}</span>
+        <span aria-hidden="true" />
       </div>
 
       <Show when={unclassified().length > 0}>
-        <p class="text-[11px] text-[#fab219] leading-relaxed">
+        <p class="mt-3 t-meta leading-relaxed" style={{ color: "#fab219" }}>
           {unclassified().length === 1
             ? "1 asset account has"
             : `${unclassified().length} asset accounts have`}{" "}
@@ -114,27 +118,23 @@ const Investing: Component<Props> = (props) => {
       </Show>
 
       {/* Cash reserve */}
-      <div class="border-t border-[#21262d] pt-3 space-y-1.5 text-[13px] tabular-nums">
-        <div class="flex justify-between">
-          <span class="text-gray-400">Spending per month</span>
-          <span class="text-gray-200">
-            {money(liq().spendPerMonth)}
-            <Show when={store.trailingSpend().months > 0}>
-              <span class="text-[10px] text-gray-600">
-                {" "}
-                avg of {store.trailingSpend().months} mo
-              </span>
-            </Show>
-          </span>
-        </div>
-        <div class="flex justify-between">
-          <span class="text-gray-400">Cash covers</span>
-          <span class="text-gray-200">
-            {liq().spendPerMonth > 0 ? `${liq().monthsCovered.toFixed(1)} months` : "—"}
-          </span>
-        </div>
-        <div class="flex justify-between items-baseline">
-          <span class="text-gray-400">
+      <h3 class="t-label ink-2 pt-6 pb-2 rule-b">Cash reserve</h3>
+      <div class="ruled-rows">
+        <Row
+          label="Spending per month"
+          hint={
+            store.trailingSpend().months > 0
+              ? `Average of the last ${store.trailingSpend().months} months with activity`
+              : undefined
+          }
+          value={money(liq().spendPerMonth)}
+        />
+        <Row
+          label="Cash covers"
+          value={liq().spendPerMonth > 0 ? `${liq().monthsCovered.toFixed(1)} months` : "—"}
+        />
+        <div class="flex items-baseline justify-between gap-3 py-1.5">
+          <span class="t-meta ink-2">
             Reserve target ·{" "}
             <Show
               when={editingReserve()}
@@ -144,7 +144,7 @@ const Investing: Component<Props> = (props) => {
                     setDraft(String(liq().targetMonths));
                     setEditingReserve(true);
                   }}
-                  class="text-gray-300 hover:text-white underline decoration-dotted underline-offset-2">
+                  class="hover:text-[color:var(--ink)] underline decoration-dotted underline-offset-2">
                   {liq().targetMonths} mo
                 </button>
               }>
@@ -159,36 +159,40 @@ const Investing: Component<Props> = (props) => {
                   if (e.key === "Enter") commitReserve();
                   if (e.key === "Escape") setEditingReserve(false);
                 }}
-                class="w-12 bg-[#161b22] border border-[#3987e5] rounded px-1 text-right tabular-nums text-white outline-none"
+                class="w-12 bg-[#161b22] border border-[#3987e5] px-1 text-right tabular-nums ink outline-none"
                 aria-label="Reserve months"
               />
             </Show>
           </span>
-          <span class="text-gray-200">{money(liq().reserveCents)}</span>
+          <span class="t-meta tabular-nums ink">{money(liq().reserveCents)}</span>
         </div>
-
-        <div
-          class="rounded px-2.5 py-2 mt-1 flex items-baseline justify-between"
-          style={{
-            background:
-              liq().deployableCents > 0 ? "rgba(57,135,229,0.12)" : "rgba(250,178,25,0.10)",
-          }}>
-          <span class="text-[11px] uppercase tracking-wider text-gray-400">
-            {liq().deployableCents >= 0 ? "Cash above reserve" : "Short of reserve"}
-          </span>
-          <span
-            class="text-lg font-semibold"
-            style={{ color: liq().deployableCents >= 0 ? "#3987e5" : "#fab219" }}>
-            {money(Math.abs(liq().deployableCents))}
-          </span>
-        </div>
-        <p class="text-[10px] text-gray-600 leading-relaxed">
-          Cash beyond your reserve, i.e. money not earmarked for emergencies. What to do with it is
-          your call — this only reports the position.
-        </p>
       </div>
+
+      <div class="flex items-baseline justify-between gap-3 rule-strong-t pt-3 mt-1">
+        <span class="t-label ink">
+          {liq().deployableCents >= 0 ? "Cash above reserve" : "Short of reserve"}
+        </span>
+        <span
+          class="t-figure tabular-nums"
+          classList={{ ink: liq().deployableCents >= 0, neg: liq().deployableCents < 0 }}>
+          {money(Math.abs(liq().deployableCents))}
+        </span>
+      </div>
+      <p class="mt-2 t-meta ink-2 opacity-70 leading-relaxed">
+        Cash beyond your reserve, i.e. money not earmarked for emergencies. What to do with it is
+        your call — this only reports the position.
+      </p>
     </section>
   );
 };
+
+const Row: Component<{ label: string; value: string; hint?: string }> = (p) => (
+  <div class="flex items-baseline justify-between gap-3 py-1.5">
+    <span class="t-meta ink-2" title={p.hint}>
+      {p.label}
+    </span>
+    <span class="t-meta tabular-nums ink">{p.value}</span>
+  </div>
+);
 
 export default Investing;

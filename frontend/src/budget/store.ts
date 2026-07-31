@@ -95,6 +95,27 @@ export const splitsFor = (fromId: number, toId: number, amountCents: number): Sp
   { account_id: toId, amount_cents: amountCents },
 ];
 
+/**
+ * The amount as the register shows it, signed by whether the money left your
+ * accounts for good. Landing in an expense account is spending, so it reads
+ * negative; a paycheck arriving and a transfer to savings both read positive,
+ * because in both cases you still have the money.
+ *
+ * Unknown accounts are treated as non-expense: a missing lookup should not
+ * silently flip a paycheck's sign.
+ */
+export const signedAmount = (
+  entry: { splits: Split[] },
+  accountById: (id: number) => Account | undefined
+): number =>
+  entry.splits
+    .filter((s) => s.amount_cents > 0)
+    .reduce(
+      (sum, s) =>
+        sum + (accountById(s.account_id)?.type === "expense" ? -s.amount_cents : s.amount_cents),
+      0
+    );
+
 export const CLASS_LABELS: Record<string, string> = {
   cash: "Cash",
   invested: "Invested",

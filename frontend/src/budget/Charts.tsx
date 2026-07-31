@@ -14,9 +14,11 @@ const M = { l: 52, r: 12, t: 14, b: 26 };
 const PLOT_W = VIEW_W - M.l - M.r;
 const PLOT_H = VIEW_H - M.t - M.b;
 
-const INK_MUTED = "#898781";
-const GRID = "#21262d";
-const AXIS = "#383835";
+// SVG can't read the CSS custom properties, so the ink tokens are mirrored here.
+const INK_MUTED = "#8b949e"; // --ink-2
+const GRID = "#21262d"; // --rule
+const AXIS = "#30363d"; // --rule-strong
+const PAGE = "#000000"; // knockout behind line markers
 
 /** Rounds up to a pleasant axis maximum (1/2/2.5/5 × 10^k). */
 const niceMax = (v: number): number => {
@@ -38,20 +40,20 @@ const Tooltip: Component<{ tip: Tip | null }> = (p) => (
   <Show when={p.tip}>
     {(t) => (
       <div
-        class="absolute z-10 pointer-events-none bg-[#161b22] border border-[#30363d] rounded px-2.5 py-1.5 text-xs shadow-xl"
+        class="absolute z-10 pointer-events-none bg-[#161b22] border border-[color:var(--rule-strong)] px-2.5 py-1.5 t-meta shadow-xl"
         style={{
           left: `${Math.min(78, Math.max(2, t().xPct))}%`,
           top: `${Math.max(0, t().yPct)}%`,
         }}>
-        <div class="text-gray-400 mb-0.5">{t().title}</div>
+        <div class="ink-2 mb-0.5">{t().title}</div>
         <For each={t().lines}>
           {(line) => (
             <div class="flex items-center gap-1.5 tabular-nums">
               <Show when={line.color}>
-                <span class="w-2 h-2 rounded-full shrink-0" style={{ background: line.color }} />
+                <span class="w-2 h-[3px] shrink-0" style={{ background: line.color }} />
               </Show>
-              <span class="text-gray-400">{line.label}</span>
-              <span class="text-white ml-auto pl-2">{line.value}</span>
+              <span class="ink-2">{line.label}</span>
+              <span class="ink ml-auto pl-2">{line.value}</span>
             </div>
           )}
         </For>
@@ -61,8 +63,8 @@ const Tooltip: Component<{ tip: Tip | null }> = (p) => (
 );
 
 const LegendDot: Component<{ color: string; label: string }> = (p) => (
-  <span class="flex items-center gap-1.5 text-[11px] text-gray-400">
-    <span class="w-2 h-2 rounded-full" style={{ background: p.color }} />
+  <span class="flex items-center gap-1.5 t-label ink-2">
+    <span class="w-2 h-[3px]" style={{ background: p.color }} />
     {p.label}
   </span>
 );
@@ -100,10 +102,10 @@ const CashflowChart: Component<{ points: HistoryPoint[] }> = (props) => {
   return (
     <div class="relative">
       <div class="flex items-center gap-4 mb-2">
-        <h3 class="text-xs font-bold text-gray-300 mr-auto">Cashflow by month</h3>
+        <h3 class="t-label ink mr-auto">Cashflow by month</h3>
         <For each={SERIES}>{(s) => <LegendDot color={s.color} label={s.label} />}</For>
       </div>
-      <Show when={pts().length > 0} fallback={<p class="text-sm text-gray-500">No history yet.</p>}>
+      <Show when={pts().length > 0} fallback={<p class="t-meta ink-2">No history yet.</p>}>
         <svg
           viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
           class="w-full h-auto"
@@ -259,8 +261,8 @@ const NetWorthChart: Component<{
   return (
     <div class="relative">
       <div class="flex items-center gap-4 mb-2">
-        <h3 class="text-xs font-bold text-gray-300 mr-auto">Net worth → $100k</h3>
-        <span class="flex items-center gap-1.5 text-[11px] text-gray-400">
+        <h3 class="t-label ink mr-auto">Net worth → goal</h3>
+        <span class="flex items-center gap-1.5 t-label ink-2">
           <svg width="18" height="6" aria-hidden="true">
             <line
               x1="0"
@@ -275,9 +277,7 @@ const NetWorthChart: Component<{
           projection · 7%
         </span>
       </div>
-      <Show
-        when={pts().length > 0}
-        fallback={<p class="text-sm text-gray-500">No snapshots yet.</p>}>
+      <Show when={pts().length > 0} fallback={<p class="t-meta ink-2">No snapshots yet.</p>}>
         <svg
           viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
           class="w-full h-auto"
@@ -337,7 +337,7 @@ const NetWorthChart: Component<{
                   cx={x(i)}
                   cy={y(p().net_worth_cents)}
                   r="3.5"
-                  fill="#0d1117"
+                  fill={PAGE}
                   stroke={CHART_COLORS.income}
                   stroke-width="2"
                 />
@@ -375,7 +375,7 @@ const NetWorthChart: Component<{
             cx={x(domain().length - 1)}
             cy={y(props.projectedCents)}
             r="3.5"
-            fill="#0d1117"
+            fill={PAGE}
             stroke={CHART_COLORS.income}
             stroke-width="2"
             stroke-dasharray="2 2"
@@ -411,7 +411,7 @@ const Charts: Component<{ store: BudgetStore }> = (props) => {
   const history = () => store.history()?.history ?? [];
 
   return (
-    <section class="bg-[#0d1117] border border-[#30363d] rounded-lg p-4 space-y-6">
+    <section class="space-y-8">
       <CashflowChart points={history()} />
       <Show when={store.goal() && store.summary()}>
         <NetWorthChart
