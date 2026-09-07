@@ -21,10 +21,17 @@ import { signedAmount, simpleShape, splitsFor, type BudgetStore } from "./store"
 
 type Props = { store: BudgetStore };
 
-/** Same column tracks on the header, the rows and the empty state. */
+/**
+ * Same column tracks on the header, the rows and the footer.
+ *
+ * A phone gets three: date, description, amount. The from → to pair and the
+ * row actions are desktop-only — there isn't room for five columns at 375px
+ * without squeezing the description to nothing, and the actions reappear
+ * under the selected row instead.
+ */
 const GRID =
-  "grid grid-cols-[3.5rem_minmax(0,1fr)_6.5rem_3.5rem] " +
-  "sm:grid-cols-[4rem_minmax(0,1fr)_minmax(0,15rem)_7rem_4.5rem] gap-3";
+  "grid grid-cols-[3.25rem_minmax(0,1fr)_5.5rem] " +
+  "sm:grid-cols-[4rem_minmax(0,1fr)_minmax(0,15rem)_7rem_4.5rem] gap-2 sm:gap-3";
 
 const Ledger: Component<Props> = (props) => {
   const { store } = props;
@@ -149,7 +156,7 @@ const Ledger: Component<Props> = (props) => {
         <span>Description</span>
         <span class="hidden sm:block">From → to</span>
         <span class="text-right">Amount</span>
-        <span aria-hidden="true" />
+        <span class="hidden sm:block" aria-hidden="true" />
       </div>
 
       <Show
@@ -157,7 +164,9 @@ const Ledger: Component<Props> = (props) => {
         fallback={
           <p class="t-meta ink-2 py-4">Nothing this month — record your first transaction above.</p>
         }>
-        <div ref={listRef} class="ruled-rows max-h-[32rem] overflow-y-auto">
+        {/* Scrolls inside itself on desktop; on a phone a nested scroller
+            fights the page, so the list grows and the page scrolls. */}
+        <div ref={listRef} class="ruled-rows sm:max-h-[32rem] sm:overflow-y-auto">
           <For each={entries()}>
             {(entry, i) => (
               <Show
@@ -233,44 +242,76 @@ const Ledger: Component<Props> = (props) => {
                   onClick={() => setSelected(i())}
                   onDblClick={() => startEdit(entry)}
                   class={
-                    GRID +
-                    " group items-baseline py-1.5 t-meta cursor-default " +
+                    "group cursor-default " +
                     (selected() === i() ? "bg-[#161b22]" : "hover:bg-[#0d1117]")
                   }>
-                  <span class="ink-2 tabular-nums">{entry.date.slice(5).replace("-", "/")}</span>
-                  <span class="ink truncate">{entry.description}</span>
+                  <div class={GRID + " items-baseline py-1.5 t-meta"}>
+                    <span class="ink-2 tabular-nums">{entry.date.slice(5).replace("-", "/")}</span>
+                    <span class="ink truncate">{entry.description}</span>
 
-                  <span class="hidden sm:block ink-2 truncate">
-                    <Show when={simpleShape(entry)} fallback={<span>split entry</span>}>
-                      {(s) => (
-                        <>
-                          {store.accountName(s().fromId)}
-                          <span class="px-1 text-[#484f58]">→</span>
-                          {store.accountName(s().toId)}
-                        </>
-                      )}
-                    </Show>
-                  </span>
+                    <span class="hidden sm:block ink-2 truncate">
+                      <Show when={simpleShape(entry)} fallback={<span>split entry</span>}>
+                        {(s) => (
+                          <>
+                            {store.accountName(s().fromId)}
+                            <span class="px-1 text-[#484f58]">→</span>
+                            {store.accountName(s().toId)}
+                          </>
+                        )}
+                      </Show>
+                    </span>
 
-                  <span class="text-right tabular-nums ink">
-                    {amount(signedAmount(entry, store.accountById))}
-                  </span>
+                    <span class="text-right tabular-nums ink">
+                      {amount(signedAmount(entry, store.accountById))}
+                    </span>
 
-                  <span class="flex gap-1 justify-end sm:opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
-                    <button
-                      onClick={() => startEdit(entry)}
-                      class="btn px-1.5 py-0.5"
-                      aria-label={`Edit ${entry.description}`}>
-                      ed
-                    </button>
-                    <button
-                      onClick={() => requestDelete(entry.id)}
-                      class="btn px-1.5 py-0.5"
-                      classList={{ "btn-armed": confirmId() === entry.id }}
-                      aria-label={`Delete ${entry.description}`}>
-                      {confirmId() === entry.id ? "sure?" : "del"}
-                    </button>
-                  </span>
+                    <span class="hidden sm:flex gap-1 justify-end opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => startEdit(entry)}
+                        class="btn px-1.5 py-0.5"
+                        aria-label={`Edit ${entry.description}`}>
+                        ed
+                      </button>
+                      <button
+                        onClick={() => requestDelete(entry.id)}
+                        class="btn px-1.5 py-0.5"
+                        classList={{ "btn-armed": confirmId() === entry.id }}
+                        aria-label={`Delete ${entry.description}`}>
+                        {confirmId() === entry.id ? "sure?" : "del"}
+                      </button>
+                    </span>
+                  </div>
+
+                  {/* Touch has no hover, so tapping a row reveals its actions
+                      here rather than crushing them into a fifth column. */}
+                  <Show when={selected() === i()}>
+                    <div class="sm:hidden flex items-center gap-2 pb-2">
+                      <span class="t-label ink-2 truncate">
+                        <Show when={simpleShape(entry)} fallback={<span>split entry</span>}>
+                          {(s) => (
+                            <>
+                              {store.accountName(s().fromId)}
+                              <span class="px-1 text-[#484f58]">→</span>
+                              {store.accountName(s().toId)}
+                            </>
+                          )}
+                        </Show>
+                      </span>
+                      <button
+                        onClick={() => startEdit(entry)}
+                        class="btn ml-auto"
+                        aria-label={`Edit ${entry.description}`}>
+                        edit
+                      </button>
+                      <button
+                        onClick={() => requestDelete(entry.id)}
+                        class="btn"
+                        classList={{ "btn-armed": confirmId() === entry.id }}
+                        aria-label={`Delete ${entry.description}`}>
+                        {confirmId() === entry.id ? "sure?" : "delete"}
+                      </button>
+                    </div>
+                  </Show>
                 </div>
               </Show>
             )}
@@ -283,12 +324,9 @@ const Ledger: Component<Props> = (props) => {
          * that do mean something (income, spending, surplus) are in the band.
          */}
         <div class={GRID + " rule-strong-t pt-3 mt-1 t-label ink-2"}>
-          <span class="col-span-2">
+          <span class="col-span-3 sm:col-span-5">
             {entries().length} {entries().length === 1 ? "entry" : "entries"}
           </span>
-          <span class="hidden sm:block" aria-hidden="true" />
-          <span aria-hidden="true" />
-          <span aria-hidden="true" />
         </div>
       </Show>
     </section>

@@ -11,5 +11,9 @@ RUN npm run build
 # Stage 2: Caddy serves the bundle and proxies /api to the backend.
 FROM docker.io/library/caddy:2
 COPY --from=builder /app/frontend/dist /srv
+# Caddyfile      — behind a Cloudflare Tunnel (the Pi): plain :80, no TLS.
+# Caddyfile.vps  — directly exposed: two hostnames, automatic HTTPS.
+# The default is the tunnel config; compose.vps.yaml overrides the command.
 COPY frontend/Caddyfile /etc/caddy/Caddyfile
-EXPOSE 80
+COPY frontend/Caddyfile.vps /etc/caddy/Caddyfile.vps
+EXPOSE 80 443

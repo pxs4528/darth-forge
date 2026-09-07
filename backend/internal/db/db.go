@@ -101,11 +101,15 @@ var schema = []string{
 	`CREATE INDEX IF NOT EXISTS idx_txns_month ON txns (month, date DESC, id DESC)`,
 	`CREATE INDEX IF NOT EXISTS idx_txns_description ON txns (description)`,
 
+	// reconcile_state is per split, not per transaction: a Chase → Groceries
+	// entry gets its Chase side reconciled against the Chase statement while
+	// the Groceries side never is. 'n' unreconciled, 'c' cleared, 'y' locked.
 	`CREATE TABLE IF NOT EXISTS splits (
-		id           INTEGER PRIMARY KEY AUTOINCREMENT,
-		txn_id       INTEGER NOT NULL,
-		account_id   INTEGER NOT NULL,
-		amount_cents INTEGER NOT NULL
+		id              INTEGER PRIMARY KEY AUTOINCREMENT,
+		txn_id          INTEGER NOT NULL,
+		account_id      INTEGER NOT NULL,
+		amount_cents    INTEGER NOT NULL,
+		reconcile_state TEXT NOT NULL DEFAULT 'n'
 	)`,
 
 	`CREATE INDEX IF NOT EXISTS idx_splits_txn ON splits (txn_id)`,
@@ -118,6 +122,63 @@ var schema = []string{
 		amount_cents INTEGER NOT NULL,
 		PRIMARY KEY (month, account_id)
 	)`,
+
+	// ── Plaid ────────────────────────────────────────────────────────────────
+	//
+	// One row per linked institution. access_token is a LIVE CREDENTIAL for the
+	// account: it is never sent to the browser and `plaid_items` is excluded
+	// from Dump, so the nightly backup pulled to a laptop can't leak it. See
+	// secretTables in dump.go.
+	`CREATE TABLE IF NOT EXISTS plaid_items (
+		item_id          TEXT PRIMARY KEY,
+		access_token     TEXT NOT NULL,
+		institution_id   TEXT NOT NULL DEFAULT '',
+		institution_name TEXT NOT NULL DEFAULT '',
+		cursor           TEXT NOT NULL DEFAULT '',
+		status           TEXT NOT NULL DEFAULT 'ok',
+		last_sync        TEXT NOT NULL DEFAULT '',
+		created_at       TEXT NOT NULL DEFAULT (datetime('now'))
+	)`,
+
+	// Maps an account inside an item onto one of ours. sync_mode decides what
+	// syncing means: 'transactions' imports a feed to review, 'balance' just
+	// tracks the value (for investments, where a transaction feed is noise
+	// without lot-level tracking), 'ignore' skips it entirely.
+	`CREATE TABLE IF NOT EXISTS plaid_accounts (
+		plaid_account_id TEXT PRIMARY KEY,
+		item_id          TEXT NOT NULL,
+		account_id       INTEGER NOT NULL DEFAULT 0,
+		name             TEXT NOT NULL DEFAULT '',
+		mask             TEXT NOT NULL DEFAULT '',
+		type             TEXT NOT NULL DEFAULT '',
+		subtype          TEXT NOT NULL DEFAULT '',
+		sync_mode        TEXT NOT NULL DEFAULT 'transactions',
+		balance_cents    INTEGER NOT NULL DEFAULT 0,
+		balance_at       TEXT NOT NULL DEFAULT ''
+	)`,
+
+	`CREATE INDEX IF NOT EXISTS idx_plaid_accounts_item ON plaid_accounts (item_id)`,
+
+	// Imported but not yet accepted into the books. Nothing Plaid sends becomes
+	// a real entry without being reviewed: auto-posting one-sided bank data
+	// into a double-entry ledger is how the books drift in the first place.
+	`CREATE TABLE IF NOT EXISTS plaid_staging (
+		plaid_txn_id       TEXT PRIMARY KEY,
+		plaid_account_id   TEXT NOT NULL,
+		date               TEXT NOT NULL,
+		name               TEXT NOT NULL,
+		merchant           TEXT NOT NULL DEFAULT '',
+		category           TEXT NOT NULL DEFAULT '',
+		amount_cents       INTEGER NOT NULL,
+		pending            INTEGER NOT NULL DEFAULT 0,
+		status             TEXT NOT NULL DEFAULT 'new',
+		txn_id             INTEGER NOT NULL DEFAULT 0,
+		counter_account_id INTEGER NOT NULL DEFAULT 0,
+		transfer_pair      TEXT NOT NULL DEFAULT '',
+		imported_at        TEXT NOT NULL DEFAULT (datetime('now'))
+	)`,
+
+	`CREATE INDEX IF NOT EXISTS idx_plaid_staging_status ON plaid_staging (status, date DESC)`,
 
 	// Single-row goal config. months remaining is derived from target_month
 	// rather than being a number you decrement by hand every month.
@@ -154,6 +215,9 @@ func migrate(conn *sql.DB) error {
 		return err
 	}
 	if err := ensureColumn(conn, "goal", "emergency_months", "INTEGER NOT NULL DEFAULT 6"); err != nil {
+		return err
+	}
+	if err := ensureColumn(conn, "splits", "reconcile_state", "TEXT NOT NULL DEFAULT 'n'"); err != nil {
 		return err
 	}
 	if err := normalizeSubtypes(conn); err != nil {

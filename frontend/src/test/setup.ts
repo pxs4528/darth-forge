@@ -34,3 +34,31 @@ class MockWebSocket {
 }
 
 globalThis.WebSocket = MockWebSocket as unknown as typeof WebSocket;
+
+// jsdom has no matchMedia. Rather than a stub that always says "no", this
+// evaluates simple width queries against window.innerWidth, so a test can set
+// innerWidth and get the breakpoint behaviour it expects. jsdom defaults to
+// 1024px, which reads as desktop.
+if (!window.matchMedia) {
+  window.matchMedia = ((query: string) => {
+    const evaluate = () => {
+      const min = /\(min-width:\s*(\d+)px\)/.exec(query);
+      if (min) return window.innerWidth >= Number(min[1]);
+      const max = /\(max-width:\s*(\d+)px\)/.exec(query);
+      if (max) return window.innerWidth <= Number(max[1]);
+      return false;
+    };
+    return {
+      media: query,
+      get matches() {
+        return evaluate();
+      },
+      onchange: null,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      dispatchEvent: () => false,
+    };
+  }) as unknown as typeof window.matchMedia;
+}

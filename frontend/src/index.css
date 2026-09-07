@@ -196,6 +196,73 @@ body {
   color: #4d5560;
 }
 
+/*
+ * Horizontal scroller for strips that can't wrap sensibly — the tab bar. The
+ * scrollbar itself is noise on a control that's obviously swipeable.
+ */
+.budget-app .scroll-x {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.budget-app .scroll-x::-webkit-scrollbar {
+  display: none;
+}
+
+/*
+ * Nothing in the app may push the page sideways. Wide content scrolls inside
+ * its own container instead.
+ */
+.budget-app {
+  overflow-x: clip;
+}
+
+/* ── phones ─────────────────────────────────────────────────────────────────
+ *
+ * Last in the file on purpose: these override the base rules above, and media
+ * queries add no specificity, so source order is what decides.
+ */
+
+/*
+ * iOS Safari zooms the whole page when a focused input's font is under 16px,
+ * and never zooms back out. The ledger's 13px fields would trigger that on
+ * every tap, so on small screens inputs are the one place the type scale
+ * gives way.
+ */
+@media (max-width: 640px) {
+  .budget-app {
+    /* 44px overflows its row once net worth passes six figures. */
+    --fs-hero: 34px;
+    --fs-figure: 20px;
+  }
+
+  .budget-app .field,
+  .budget-app input,
+  .budget-app select,
+  .budget-app textarea {
+    font-size: 16px;
+  }
+}
+
+/*
+ * A 24px-tall ghost button is fine under a mouse and not under a thumb.
+ * Keyed on pointer rather than width so a touch laptop gets it too, and it
+ * grows the hit area without touching the type scale.
+ */
+@media (pointer: coarse) {
+  .budget-app .btn {
+    min-height: 2.25rem;
+    padding-inline: 0.7rem;
+  }
+  .budget-app .field {
+    min-height: 2.5rem;
+  }
+  .budget-app input[type="checkbox"] {
+    width: 1.15rem;
+    height: 1.15rem;
+  }
+}
+
 .ascii-art {
   font-family: "JetBrains Mono", monospace;
   line-height: 1.2;

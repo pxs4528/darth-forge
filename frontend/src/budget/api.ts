@@ -21,10 +21,22 @@ export type AccountBalance = Account & {
   change_cents: number;
 };
 
+/**
+ * Reconciliation, GnuCash-style. Per split rather than per transaction: a
+ * Chase → Groceries entry has its Chase side reconciled against the Chase
+ * statement while the Groceries side never is.
+ *
+ *   n — not reconciled
+ *   c — cleared: seen on the bank's record
+ *   y — locked: part of a statement proved to zero; refuses edits
+ */
+export type ReconcileState = "n" | "c" | "y";
+
 export type Split = {
   id?: number;
   account_id: number;
   amount_cents: number;
+  reconcile_state?: ReconcileState;
 };
 
 /** One transaction. Splits always sum to zero. */
@@ -81,8 +93,11 @@ export type Suggestion = {
 };
 
 export type RegisterRow = Entry & {
+  /** This account's own split — what reconciling addresses. */
+  split_id: number;
   amount_cents: number;
   balance_cents: number;
+  reconcile_state: ReconcileState;
 };
 
 export type Meta = {
@@ -90,6 +105,69 @@ export type Meta = {
   budget_groups: string[];
   asset_classes: AssetClass[];
   defaults: { goal_cents: number; target_month: string };
+};
+
+// ── Plaid ────────────────────────────────────────────────────────────────────
+
+/** How a linked account syncs. See docs/budget.md. */
+export type SyncMode = "transactions" | "balance" | "ignore";
+
+export type PlaidItem = {
+  item_id: string;
+  institution_id: string;
+  institution_name: string;
+  /** ok | login_required | error */
+  status: string;
+  last_sync: string;
+  created_at: string;
+};
+
+export type PlaidAccount = {
+  plaid_account_id: string;
+  item_id: string;
+  /** The ledger account this feeds; 0 means unmapped. */
+  account_id: number;
+  name: string;
+  mask: string;
+  type: string;
+  subtype: string;
+  sync_mode: SyncMode;
+  balance_cents: number;
+  balance_at: string;
+};
+
+/** An imported transaction awaiting review. */
+export type StagedTxn = {
+  plaid_txn_id: string;
+  plaid_account_id: string;
+  date: string;
+  name: string;
+  merchant: string;
+  category: string;
+  /** Our sign convention: negative when money left the account. */
+  amount_cents: number;
+  pending: boolean;
+  status: string;
+  txn_id: number;
+  /** Proposed other leg; 0 when we won't guess. */
+  counter_account_id: number;
+  /** The opposite side of a matched internal transfer. */
+  transfer_pair: string;
+};
+
+export type PlaidStatus = {
+  configured: boolean;
+  env?: string;
+  items: PlaidItem[];
+  accounts: PlaidAccount[];
+};
+
+export type SyncReport = {
+  imported: number;
+  queued: number;
+  transfers: number;
+  balances: number;
+  problems: string[];
 };
 
 export class ApiError extends Error {
@@ -194,7 +272,91 @@ export const api = {
     request<{ history: HistoryPoint[] }>(token, `/api/admin/budget/history?limit=${limit}`),
 
   register: (token: string, accountId: number) =>
-    request<{ rows: RegisterRow[] }>(token, `/api/admin/budget/register?account=${accountId}`),
+    request<{ rows: RegisterRow[]; cleared_cents: number }>(
+      token,
+      `/api/admin/budget/register?account=${accountId}`
+    ),
+
+  /** Tick or untick splits against a statement. */
+  setReconcile: (token: string, splitIds: number[], state: ReconcileState) =>
+    request<{ changed: number }>(token, "/api/admin/budget/reconcile", {
+      method: "PUT",
+      body: JSON.stringify({ split_ids: splitIds, state }),
+    }),
+
+  /** End a proved statement (lock) or reopen one (unlock). */
+  reconcileAccount: (token: string, accountId: number, action: "lock" | "unlock") =>
+    request<{ changed: number }>(token, "/api/admin/budget/reconcile", {
+      method: "PUT",
+      body: JSON.stringify({ account_id: accountId, action }),
+    }),
+
+  /**
+   * Deletes every entry, keeping accounts, budgets and the goal — how you open
+   * a fresh book. The confirmation phrase is checked server-side too.
+   */
+  reset: (token: string, confirm: string) =>
+    request<{ entries_deleted: number }>(token, "/api/admin/budget/reset", {
+      method: "POST",
+      body: JSON.stringify({ confirm }),
+    }),
+
+  // ── Plaid ──
+
+  plaidStatus: (token: string) => request<PlaidStatus>(token, "/api/admin/budget/plaid/status"),
+
+  /** With itemId, opens Link in update mode to repair an expired login. */
+  plaidLinkToken: (token: string, itemId?: string) =>
+    request<{ link_token: string }>(token, "/api/admin/budget/plaid/link-token", {
+      method: "POST",
+      body: JSON.stringify(itemId ? { item_id: itemId } : {}),
+    }),
+
+  plaidExchange: (token: string, publicToken: string) =>
+    request<{ item_id: string; institution: string; accounts: number }>(
+      token,
+      "/api/admin/budget/plaid/exchange",
+      { method: "POST", body: JSON.stringify({ public_token: publicToken }) }
+    ),
+
+  plaidMapAccount: (token: string, plaidAccountId: string, accountId: number, syncMode: SyncMode) =>
+    request<{ message: string }>(token, "/api/admin/budget/plaid/accounts", {
+      method: "PUT",
+      body: JSON.stringify({
+        plaid_account_id: plaidAccountId,
+        account_id: accountId,
+        sync_mode: syncMode,
+      }),
+    }),
+
+  plaidUnlink: (token: string, itemId: string) =>
+    request<{ message: string }>(
+      token,
+      `/api/admin/budget/plaid/items?item_id=${encodeURIComponent(itemId)}`,
+      { method: "DELETE" }
+    ),
+
+  plaidSync: (token: string) =>
+    request<SyncReport>(token, "/api/admin/budget/plaid/sync", { method: "POST" }),
+
+  plaidStaged: (token: string) =>
+    request<{ staged: StagedTxn[] }>(token, "/api/admin/budget/plaid/staged"),
+
+  plaidAccept: (token: string, plaidTxnId: string, counterAccountId: number, description: string) =>
+    request<Entry>(token, "/api/admin/budget/plaid/accept", {
+      method: "POST",
+      body: JSON.stringify({
+        plaid_txn_id: plaidTxnId,
+        counter_account_id: counterAccountId,
+        description,
+      }),
+    }),
+
+  plaidIgnore: (token: string, plaidTxnIds: string[]) =>
+    request<{ ignored: number }>(token, "/api/admin/budget/plaid/ignore", {
+      method: "POST",
+      body: JSON.stringify({ plaid_txn_ids: plaidTxnIds }),
+    }),
 
   suggest: (token: string, q: string) =>
     request<{ suggestions: Suggestion[] }>(

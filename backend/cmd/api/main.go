@@ -4,6 +4,7 @@ import (
 	"backend/internal/db"
 	"backend/internal/handlers"
 	"backend/internal/logger"
+	"backend/internal/plaid"
 	"backend/internal/services"
 	"backend/internal/websocket"
 	"encoding/json"
@@ -44,12 +45,25 @@ func main() {
 		defer budgetDB.Close()
 	}
 
+	// Plaid is optional in the same way: unconfigured means the /plaid routes
+	// report themselves unavailable and manual entry carries on working.
+	plaidClient, err := plaid.New()
+	if err != nil {
+		log.Info("plaid", "Plaid not configured, bank sync disabled", map[string]interface{}{
+			"reason": err.Error(),
+		})
+		plaidClient = nil
+	} else {
+		log.Info("plaid", "Plaid configured", map[string]interface{}{"env": plaidClient.Env()})
+	}
+
 	// Initialize handlers
 	logsHandler := handlers.NewLogsHandler(hub, log)
 	webhookHandler := handlers.NewWebhookHandler(log)
 	telemetryHandler := handlers.NewTelemetryHandler(log)
 	uscisHandler := handlers.NewUSCISHandler(log, uscisPoller)
 	budgetHandler := handlers.NewBudgetHandler(log, budgetDB)
+	plaidHandler := handlers.NewPlaidHandler(log, budgetDB, plaidClient)
 
 	// Routes
 	http.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
@@ -81,7 +95,21 @@ func main() {
 	http.HandleFunc("/api/admin/budget/history", handlers.AdminOnly(budgetHandler.HandleHistory))
 	http.HandleFunc("/api/admin/budget/register", handlers.AdminOnly(budgetHandler.HandleRegister))
 	http.HandleFunc("/api/admin/budget/suggest", handlers.AdminOnly(budgetHandler.HandleSuggest))
+	http.HandleFunc("/api/admin/budget/reconcile", handlers.AdminOnly(budgetHandler.HandleReconcile))
+	http.HandleFunc("/api/admin/budget/reset", handlers.AdminOnly(budgetHandler.HandleReset))
 	http.HandleFunc("/api/admin/budget/dump", handlers.AdminOrBackupToken(budgetHandler.HandleDump))
+
+	// Plaid bank sync (protected). Never reachable with the backup token:
+	// these routes can move money into the books and mint link tokens.
+	http.HandleFunc("/api/admin/budget/plaid/status", handlers.AdminOnly(plaidHandler.HandleStatus))
+	http.HandleFunc("/api/admin/budget/plaid/link-token", handlers.AdminOnly(plaidHandler.HandleLinkToken))
+	http.HandleFunc("/api/admin/budget/plaid/exchange", handlers.AdminOnly(plaidHandler.HandleExchange))
+	http.HandleFunc("/api/admin/budget/plaid/accounts", handlers.AdminOnly(plaidHandler.HandleMapAccount))
+	http.HandleFunc("/api/admin/budget/plaid/items", handlers.AdminOnly(plaidHandler.HandleDeleteItem))
+	http.HandleFunc("/api/admin/budget/plaid/sync", handlers.AdminOnly(plaidHandler.HandleSync))
+	http.HandleFunc("/api/admin/budget/plaid/staged", handlers.AdminOnly(plaidHandler.HandleStaged))
+	http.HandleFunc("/api/admin/budget/plaid/accept", handlers.AdminOnly(plaidHandler.HandleAccept))
+	http.HandleFunc("/api/admin/budget/plaid/ignore", handlers.AdminOnly(plaidHandler.HandleIgnore))
 
 	log.Info("server", "Server starting on :8080", nil)
 	if err := http.ListenAndServe(":8080", nil); err != nil {

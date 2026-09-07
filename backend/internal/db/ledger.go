@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -32,10 +33,26 @@ type AccountBalance struct {
 	ChangeCents  int64 `json:"change_cents"`
 }
 
+// Reconciliation states, mirroring GnuCash's n/c/y. A split is cleared once
+// you've seen it on the bank's record, and locked once it belongs to a
+// statement you proved to zero. Locked splits refuse edits.
+const (
+	ReconcileNone    = "n"
+	ReconcileCleared = "c"
+	ReconcileLocked  = "y"
+)
+
+func ValidReconcileState(s string) bool {
+	return s == ReconcileNone || s == ReconcileCleared || s == ReconcileLocked
+}
+
 type Split struct {
 	ID          int64 `json:"id"`
 	AccountID   int64 `json:"account_id"`
 	AmountCents int64 `json:"amount_cents"`
+	// Empty on the way in: writers never set reconciliation, it's moved by the
+	// reconcile endpoint alone.
+	ReconcileState string `json:"reconcile_state,omitempty"`
 }
 
 // Entry is one transaction: a date, a description, and the splits that move
@@ -416,7 +433,7 @@ func listEntries(conn *sql.DB, month string) ([]Entry, error) {
 	}
 
 	splitRows, err := conn.Query(
-		`SELECT s.id, s.txn_id, s.account_id, s.amount_cents
+		`SELECT s.id, s.txn_id, s.account_id, s.amount_cents, s.reconcile_state
 		 FROM splits s JOIN txns t ON t.id = s.txn_id
 		 WHERE t.month = ? ORDER BY s.id`, month)
 	if err != nil {
@@ -426,7 +443,7 @@ func listEntries(conn *sql.DB, month string) ([]Entry, error) {
 	for splitRows.Next() {
 		var txnID int64
 		var sp Split
-		if err := splitRows.Scan(&sp.ID, &txnID, &sp.AccountID, &sp.AmountCents); err != nil {
+		if err := splitRows.Scan(&sp.ID, &txnID, &sp.AccountID, &sp.AmountCents, &sp.ReconcileState); err != nil {
 			return nil, err
 		}
 		if idx, ok := byID[txnID]; ok {
@@ -561,10 +578,37 @@ func CreateEntry(conn *sql.DB, e Entry) (*Entry, error) {
 	return &e, nil
 }
 
+// ErrLocked is returned when an edit would disturb a reconciled statement.
+var ErrLocked = errors.New("entry belongs to a locked statement — unlock it first")
+
+// entryLocked reports whether any of an entry's splits has been reconciled and
+// locked. Editing one would silently change a period you already proved to
+// zero, which is precisely what locking exists to prevent.
+func entryLocked(q interface{ QueryRow(string, ...any) *sql.Row }, id int64) (bool, error) {
+	var n int64
+	err := q.QueryRow(
+		`SELECT COUNT(*) FROM splits WHERE txn_id = ? AND reconcile_state = ?`,
+		id, ReconcileLocked,
+	).Scan(&n)
+	if err != nil {
+		return false, fmt.Errorf("check lock: %w", err)
+	}
+	return n > 0, nil
+}
+
 // UpdateEntry replaces an entry and all of its splits.
+//
+// Splits are replaced wholesale, so any "cleared" marks on this entry are
+// dropped: the amounts or accounts may have moved, which makes an earlier
+// tick-off meaningless. Locked splits refuse the edit outright.
 func UpdateEntry(conn *sql.DB, e Entry) error {
 	if err := ValidateSplits(e.Splits); err != nil {
 		return err
+	}
+	if locked, err := entryLocked(conn, e.ID); err != nil {
+		return err
+	} else if locked {
+		return ErrLocked
 	}
 
 	tx, err := conn.Begin()
@@ -598,6 +642,12 @@ func UpdateEntry(conn *sql.DB, e Entry) error {
 }
 
 func DeleteEntry(conn *sql.DB, id int64) error {
+	if locked, err := entryLocked(conn, id); err != nil {
+		return err
+	} else if locked {
+		return ErrLocked
+	}
+
 	tx, err := conn.Begin()
 	if err != nil {
 		return fmt.Errorf("begin: %w", err)
@@ -711,8 +761,10 @@ func Suggest(conn *sql.DB, q string) ([]Suggestion, error) {
 // the classic ledger view.
 type RegisterRow struct {
 	Entry
-	AmountCents  int64 `json:"amount_cents"`  // this account's share
-	BalanceCents int64 `json:"balance_cents"` // running balance after this entry
+	SplitID        int64  `json:"split_id"`        // this account's split, for reconciling
+	AmountCents    int64  `json:"amount_cents"`    // this account's share
+	BalanceCents   int64  `json:"balance_cents"`   // running balance after this entry
+	ReconcileState string `json:"reconcile_state"` // n / c / y for this side
 }
 
 func Register(conn *sql.DB, accountID int64, limit int) ([]RegisterRow, error) {
@@ -720,7 +772,8 @@ func Register(conn *sql.DB, accountID int64, limit int) ([]RegisterRow, error) {
 		limit = 200
 	}
 	rows, err := conn.Query(`
-		SELECT t.id, t.date, t.month, t.description, s.amount_cents
+		SELECT t.id, t.date, t.month, t.description,
+		       s.id, s.amount_cents, s.reconcile_state
 		FROM splits s JOIN txns t ON t.id = s.txn_id
 		WHERE s.account_id = ?
 		ORDER BY t.date, t.id`, accountID)
@@ -733,7 +786,10 @@ func Register(conn *sql.DB, accountID int64, limit int) ([]RegisterRow, error) {
 	var running int64
 	for rows.Next() {
 		var r RegisterRow
-		if err := rows.Scan(&r.ID, &r.Date, &r.Month, &r.Description, &r.AmountCents); err != nil {
+		if err := rows.Scan(
+			&r.ID, &r.Date, &r.Month, &r.Description,
+			&r.SplitID, &r.AmountCents, &r.ReconcileState,
+		); err != nil {
 			return nil, err
 		}
 		running += r.AmountCents
@@ -752,4 +808,111 @@ func Register(conn *sql.DB, accountID int64, limit int) ([]RegisterRow, error) {
 		out = out[:limit]
 	}
 	return out, nil
+}
+
+// ── reconciliation ───────────────────────────────────────────────────────────
+//
+// Reconciling is comparing your books against the bank's record for one
+// account over one statement period. You tick each entry you can see on the
+// statement ("cleared"), and when the cleared balance equals the statement's
+// closing balance the period is proved — locking it then protects those
+// entries from later edits.
+
+// SetReconcileState moves a set of splits to a new state. Splits are addressed
+// by id rather than by entry because the two sides of a transaction reconcile
+// against different statements at different times.
+func SetReconcileState(conn *sql.DB, splitIDs []int64, state string) (int64, error) {
+	if !ValidReconcileState(state) {
+		return 0, fmt.Errorf("unknown reconcile state %q", state)
+	}
+	if len(splitIDs) == 0 {
+		return 0, nil
+	}
+
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(splitIDs)), ",")
+	args := make([]any, 0, len(splitIDs)+1)
+	args = append(args, state)
+	for _, id := range splitIDs {
+		args = append(args, id)
+	}
+
+	res, err := conn.Exec(
+		`UPDATE splits SET reconcile_state = ? WHERE id IN (`+placeholders+`)`, args...)
+	if err != nil {
+		return 0, fmt.Errorf("set reconcile state: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
+}
+
+// LockCleared ends a reconcile session: every cleared split on the account
+// becomes locked. Returns how many were locked.
+func LockCleared(conn *sql.DB, accountID int64) (int64, error) {
+	res, err := conn.Exec(
+		`UPDATE splits SET reconcile_state = ?
+		 WHERE account_id = ? AND reconcile_state = ?`,
+		ReconcileLocked, accountID, ReconcileCleared)
+	if err != nil {
+		return 0, fmt.Errorf("lock cleared: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
+}
+
+// UnlockAccount reopens every locked split on an account, for when a statement
+// was proved against bad data and has to be redone.
+func UnlockAccount(conn *sql.DB, accountID int64) (int64, error) {
+	res, err := conn.Exec(
+		`UPDATE splits SET reconcile_state = ?
+		 WHERE account_id = ? AND reconcile_state = ?`,
+		ReconcileCleared, accountID, ReconcileLocked)
+	if err != nil {
+		return 0, fmt.Errorf("unlock account: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
+}
+
+// ClearedBalance is an account's balance counting only cleared and locked
+// splits — the figure that has to match the statement's closing balance.
+func ClearedBalance(conn *sql.DB, accountID int64) (int64, error) {
+	var cents sql.NullInt64
+	err := conn.QueryRow(
+		`SELECT SUM(amount_cents) FROM splits
+		 WHERE account_id = ? AND reconcile_state IN (?, ?)`,
+		accountID, ReconcileCleared, ReconcileLocked,
+	).Scan(&cents)
+	if err != nil {
+		return 0, fmt.Errorf("cleared balance: %w", err)
+	}
+	return cents.Int64, nil
+}
+
+// ── starting the book over ───────────────────────────────────────────────────
+
+// ResetLedger deletes every transaction and split, leaving accounts, budgets
+// and the goal untouched. This is how you open a fresh book at a chosen date:
+// wipe the entries, then record opening balances on the day you're starting
+// from. Destructive and irreversible — take a /dump first.
+func ResetLedger(conn *sql.DB) (int64, error) {
+	tx, err := conn.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("begin: %w", err)
+	}
+	defer tx.Rollback()
+
+	var entries int64
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM txns`).Scan(&entries); err != nil {
+		return 0, fmt.Errorf("count entries: %w", err)
+	}
+	if _, err := tx.Exec(`DELETE FROM splits`); err != nil {
+		return 0, fmt.Errorf("delete splits: %w", err)
+	}
+	if _, err := tx.Exec(`DELETE FROM txns`); err != nil {
+		return 0, fmt.Errorf("delete txns: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit: %w", err)
+	}
+	return entries, nil
 }

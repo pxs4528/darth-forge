@@ -59,7 +59,10 @@
       "PowerShell(Set-Location C:\\\\Users\\\\mrpar\\\\projects\\\\darth-forge\\\\backend; $env:Path = [Environment]::GetEnvironmentVariable\\('Path','Machine'\\) + ';' + [Environment]::GetEnvironmentVariable\\('Path','User'\\); go build ./...; \"BUILD: $LASTEXITCODE\"; go vet ./...; \"VET: $LASTEXITCODE\")",
       "PowerShell(Set-Location C:\\\\Users\\\\mrpar\\\\projects\\\\darth-forge; $env:Path = [Environment]::GetEnvironmentVariable\\('Path','Machine'\\) + ';' + [Environment]::GetEnvironmentVariable\\('Path','User'\\); npm run lint 2>$null; \"LINT: $LASTEXITCODE\")",
       "PowerShell(Set-Location C:\\\\Users\\\\mrpar\\\\projects\\\\darth-forge\\\\backend; $env:Path = [Environment]::GetEnvironmentVariable\\('Path','Machine'\\) + ';' + [Environment]::GetEnvironmentVariable\\('Path','User'\\); go build ./...; \"BUILD: $LASTEXITCODE\"; go vet ./...; \"VET: $LASTEXITCODE\"; go test ./... -count=1 2>$null | Select-String \"ok|FAIL|---\"; Set-Location ..; npx tsc --noEmit -p frontend; \"TSC: $LASTEXITCODE\"; npm run lint 2>$null; \"LINT: $LASTEXITCODE\"; npm run test:frontend 2>$null | Select-String \"Test Files|Tests |failed\")",
-      "PowerShell(Set-Location C:\\\\Users\\\\mrpar\\\\projects\\\\darth-forge\\\\backend; $env:Path = [Environment]::GetEnvironmentVariable\\('Path','Machine'\\) + ';' + [Environment]::GetEnvironmentVariable\\('Path','User'\\); $env:ADMIN_SECRET = 'test-secret-123'; go run ./cmd/api)"
+      "PowerShell(Set-Location C:\\\\Users\\\\mrpar\\\\projects\\\\darth-forge\\\\backend; $env:Path = [Environment]::GetEnvironmentVariable\\('Path','Machine'\\) + ';' + [Environment]::GetEnvironmentVariable\\('Path','User'\\); $env:ADMIN_SECRET = 'test-secret-123'; go run ./cmd/api)",
+      "WebSearch",
+      "WebFetch(domain:support.plaid.com)",
+      "WebFetch(domain:plaid.com)"
     ],
     "ask": [
       "Bash(git push:*)",
