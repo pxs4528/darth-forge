@@ -1,7 +1,10 @@
 import { createMemo, createSignal, For, Show, type Component } from "solid-js";
 import type { AccountBalance, AccountType } from "./api";
-import { amount, money, parseCents, today } from "./format";
+import { amount, firstOfMonth, money, parseCents } from "./format";
 import { CLASS_LABELS, displayBalance, GROUP_LABELS, TYPE_META, type BudgetStore } from "./store";
+
+/** Must be typed exactly to wipe the ledger. Matches the server-side check. */
+const RESET_PHRASE = "DELETE ALL ENTRIES";
 
 // What you own and owe, with balances computed from the ledger rather than
 // typed in. Assets and liabilities are grouped under their own headings — the
@@ -14,7 +17,8 @@ type Props = { store: BudgetStore };
 const TYPES: AccountType[] = ["asset", "liability", "income", "expense", "equity"];
 const NEW_TYPES: AccountType[] = ["asset", "liability", "income", "expense"];
 
-const GRID = "grid grid-cols-[minmax(0,1fr)_6rem_7rem] gap-3";
+const GRID =
+  "grid grid-cols-[minmax(0,1fr)_4.75rem_5.75rem] sm:grid-cols-[minmax(0,1fr)_6rem_7rem] gap-2 sm:gap-3";
 
 const Accounts: Component<Props> = (props) => {
   const { store } = props;
@@ -25,6 +29,11 @@ const Accounts: Component<Props> = (props) => {
   const [newGroup, setNewGroup] = createSignal("misc");
   const [openingFor, setOpeningFor] = createSignal<number | null>(null);
   const [openingAmount, setOpeningAmount] = createSignal("");
+  // Opening balances are dated: starting a book on 1 August means dating them
+  // 2026-08-01, not today. Sticky across accounts so you set it once.
+  const [openingDate, setOpeningDate] = createSignal(firstOfMonth(store.month()));
+  const [resetConfirm, setResetConfirm] = createSignal("");
+  const [resetting, setResetting] = createSignal(false);
 
   // Balance sheet: only assets and liabilities are "what you have".
   const sheet = (type: AccountType) =>
@@ -73,13 +82,27 @@ const Accounts: Component<Props> = (props) => {
 
   const submitOpening = async (a: AccountBalance) => {
     const cents = parseCents(openingAmount());
+    const date = openingDate();
     setOpeningFor(null);
     setOpeningAmount("");
-    if (cents === null || cents <= 0) return;
+    if (cents === null || cents <= 0 || !date) return;
     try {
-      await store.setOpeningBalance(a, cents, today());
+      await store.setOpeningBalance(a, cents, date);
     } catch (e) {
       store.flash(e instanceof Error ? e.message : "Failed to record opening balance");
+    }
+  };
+
+  const doReset = async () => {
+    if (resetConfirm() !== RESET_PHRASE || resetting()) return;
+    setResetting(true);
+    try {
+      await store.resetLedger(RESET_PHRASE);
+      setResetConfirm("");
+    } catch (e) {
+      store.flash(e instanceof Error ? e.message : "Reset failed");
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -126,7 +149,9 @@ const Accounts: Component<Props> = (props) => {
             <For each={store.accounts()}>
               {(a) => (
                 <div class="py-2" classList={{ "opacity-50": a.archived }}>
-                  <div class="grid grid-cols-2 sm:grid-cols-[minmax(0,1fr)_7rem_auto_auto] gap-2 items-center">
+                  {/* Stacks on a phone: the class/opening/goal cluster is far
+                      wider than half a 375px screen. */}
+                  <div class="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_7rem_auto_auto] gap-2 items-center">
                     <input
                       type="text"
                       value={a.name}
@@ -154,7 +179,7 @@ const Accounts: Component<Props> = (props) => {
                           {GROUP_LABELS[a.budget_group] ?? a.budget_group}
                         </span>
                       }>
-                      <div class="flex gap-1.5 items-center">
+                      <div class="flex flex-wrap gap-1.5 items-center">
                         {/* Asset class drives the allocation and reserve figures. */}
                         <Show when={a.type === "asset"}>
                           <select
@@ -195,10 +220,20 @@ const Accounts: Component<Props> = (props) => {
                   </div>
 
                   <Show when={openingFor() === a.id}>
-                    <div class="flex gap-2 items-center pt-2">
+                    <div class="flex flex-wrap gap-2 items-center pt-2">
                       <span class="t-meta ink-2 whitespace-nowrap">
-                        {a.type === "liability" ? "Currently owed" : "Current balance"}
+                        {a.type === "liability" ? "Owed as of" : "Balance as of"}
                       </span>
+                      {/* Dating this is the whole trick to opening a book on a
+                          given day — an opening balance dated today would land
+                          in the wrong month. */}
+                      <input
+                        type="date"
+                        value={openingDate()}
+                        onInput={(e) => setOpeningDate(e.currentTarget.value)}
+                        class="field w-36 tabular-nums"
+                        aria-label="Opening balance date"
+                      />
                       <input
                         type="text"
                         inputmode="decimal"
@@ -223,7 +258,7 @@ const Accounts: Component<Props> = (props) => {
             </For>
           </div>
 
-          <div class="grid grid-cols-2 sm:grid-cols-[minmax(0,1fr)_7rem_7rem_4rem] gap-2 items-center pt-3 mt-1 rule-strong-t">
+          <div class="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_7rem_7rem_4rem] gap-2 items-center pt-3 mt-1 rule-strong-t">
             <input
               type="text"
               value={newName()}
@@ -253,6 +288,43 @@ const Accounts: Component<Props> = (props) => {
             <button onClick={addAccount} class="btn">
               add
             </button>
+          </div>
+
+          {/*
+            Opening a fresh book. Deliberately plain and unstyled-as-a-button:
+            this deletes every transaction you have ever recorded, and the only
+            way back is the nightly SQL dump.
+          */}
+          <div class="mt-8 pt-4 rule-strong-t">
+            <h3 class="t-label neg pb-2">Start a new book</h3>
+            <p class="t-meta ink-2 leading-relaxed max-w-prose">
+              Deletes every transaction, keeping your accounts, asset classes, targets and goal. You
+              then record an opening balance dated to your start date for each account, and enter
+              that period's transactions from your statements.
+            </p>
+            <p class="t-meta ink-2 leading-relaxed max-w-prose mt-2 opacity-70">
+              There is no undo. Take a backup first — the <em>backup</em> button in the header
+              downloads a full SQL dump you can restore from.
+            </p>
+            <div class="flex flex-wrap gap-2 items-center mt-3">
+              <input
+                type="text"
+                value={resetConfirm()}
+                onInput={(e) => setResetConfirm(e.currentTarget.value)}
+                placeholder={RESET_PHRASE}
+                class="field w-56"
+                aria-label={`Type ${RESET_PHRASE} to confirm`}
+                autocomplete="off"
+                spellcheck={false}
+              />
+              <button
+                onClick={doReset}
+                disabled={resetConfirm() !== RESET_PHRASE || resetting()}
+                class="btn"
+                classList={{ "btn-armed": resetConfirm() === RESET_PHRASE && !resetting() }}>
+                {resetting() ? "…" : "delete all entries"}
+              </button>
+            </div>
           </div>
         </div>
       </Show>

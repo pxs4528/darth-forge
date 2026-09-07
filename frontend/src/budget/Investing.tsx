@@ -8,7 +8,11 @@ import { CLASS_COLORS, CLASS_LABELS, type BudgetStore } from "./store";
 
 type Props = { store: BudgetStore };
 
-const GRID = "grid grid-cols-[minmax(0,1fr)_3.5rem_6.5rem_5.5rem] gap-3";
+// The share column is the first thing to go on a phone: it's derivable from
+// the balance, and four fixed tracks leave the class name unreadable at 375px.
+const GRID =
+  "grid grid-cols-[minmax(0,1fr)_5.5rem_5rem] " +
+  "sm:grid-cols-[minmax(0,1fr)_3.5rem_6.5rem_5.5rem] gap-2 sm:gap-3";
 
 const Investing: Component<Props> = (props) => {
   const { store } = props;
@@ -59,7 +63,7 @@ const Investing: Component<Props> = (props) => {
 
       <div class={GRID + " t-label ink-2 pt-3 pb-2 rule-b"}>
         <span>Asset class</span>
-        <span class="text-right">Share</span>
+        <span class="hidden sm:block text-right">Share</span>
         <span class="text-right">Balance</span>
         <span class="text-right">This month</span>
       </div>
@@ -77,7 +81,7 @@ const Investing: Component<Props> = (props) => {
                 />
                 {CLASS_LABELS[row.key]}
               </span>
-              <span class="text-right tabular-nums ink-2">
+              <span class="hidden sm:block text-right tabular-nums ink-2">
                 {Math.round(pctOf(row.balanceCents))}%
               </span>
               <span class="text-right tabular-nums ink">{amount(row.balanceCents)}</span>
@@ -99,7 +103,7 @@ const Investing: Component<Props> = (props) => {
 
       <div class={GRID + " rule-strong-t pt-3 mt-1 items-baseline"}>
         <span class="t-label ink">Total assets</span>
-        <span aria-hidden="true" />
+        <span class="hidden sm:block" aria-hidden="true" />
         <span class="text-right t-figure ink">{amount(total())}</span>
         <span aria-hidden="true" />
       </div>

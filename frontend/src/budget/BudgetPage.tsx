@@ -1,5 +1,5 @@
 import { createSignal, For, onCleanup, onMount, Show, type Component } from "solid-js";
-import { navigate } from "../lib/router";
+import { isBudgetHost, navigate } from "../lib/router";
 import Accounts from "./Accounts";
 import { api } from "./api";
 import Charts from "./Charts";
@@ -10,6 +10,8 @@ import { buildCsv, downloadCsv } from "./export";
 import { monthLabel } from "./format";
 import Ledger from "./Ledger";
 import { Masthead, SummaryBand } from "./Masthead";
+import Plaid from "./Plaid";
+import Reconcile from "./Reconcile";
 import { createBudgetStore } from "./store";
 import Tracker from "./Tracker";
 
@@ -23,15 +25,17 @@ import Tracker from "./Tracker";
 const TABS = [
   { key: "register", label: "Register" },
   { key: "accounts", label: "Accounts" },
+  { key: "reconcile", label: "Reconcile" },
   { key: "allocation", label: "Allocation" },
   { key: "budgets", label: "Budgets" },
   { key: "trends", label: "Trends" },
+  { key: "banks", label: "Banks" },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
 
 const SHORTCUTS: [string, string][] = [
-  ["1 – 5", "Switch tab"],
+  [`1 – ${TABS.length}`, "Switch tab"],
   ["n", "New entry (focus description)"],
   ["[ / ]", "Previous / next month"],
   ["j / k", "Select entry below / above"],
@@ -135,12 +139,16 @@ const BudgetPage: Component = () => {
         <div class="max-w-6xl mx-auto px-4 sm:px-6">
           {/* Running head: month on the left, controls on the right. */}
           <header class="flex flex-wrap items-center gap-x-3 gap-y-2 py-3 rule-b">
-            <button
-              onClick={() => navigate("/")}
-              class="t-label ink-2 hover:text-[color:var(--ink)]"
-              aria-label="Back to portfolio">
-              ‹ site
-            </button>
+            {/* On the dedicated budget hostname the portfolio isn't served
+                here, so there is nowhere for this to go. */}
+            <Show when={!isBudgetHost()}>
+              <button
+                onClick={() => navigate("/")}
+                class="t-label ink-2 hover:text-[color:var(--ink)]"
+                aria-label="Back to portfolio">
+                ‹ site
+              </button>
+            </Show>
 
             <span class="t-label ink tabular-nums">{monthLabel(store.month())}</span>
 
@@ -185,22 +193,26 @@ const BudgetPage: Component = () => {
           <main class="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_19rem] gap-x-8 gap-y-6 items-start">
             <div class="min-w-0">
               {/* Tab strip */}
-              <div class="flex flex-wrap gap-x-5 gap-y-1 rule-b" role="tablist">
-                <For each={TABS}>
-                  {(t) => (
-                    <button
-                      role="tab"
-                      aria-selected={tab() === t.key}
-                      onClick={() => setTab(t.key)}
-                      class="t-label py-2.5 -mb-px border-b transition-colors"
-                      classList={{
-                        "ink border-[color:var(--ink)]": tab() === t.key,
-                        "ink-2 border-transparent hover:text-[color:var(--ink)]": tab() !== t.key,
-                      }}>
-                      {t.label}
-                    </button>
-                  )}
-                </For>
+              {/* Seven tabs wrap to three cramped rows on a phone, so the
+                  strip scrolls sideways instead. */}
+              <div class="scroll-x rule-b" role="tablist">
+                <div class="flex gap-x-5 w-max min-w-full">
+                  <For each={TABS}>
+                    {(t) => (
+                      <button
+                        role="tab"
+                        aria-selected={tab() === t.key}
+                        onClick={() => setTab(t.key)}
+                        class="t-label py-2.5 -mb-px border-b transition-colors whitespace-nowrap"
+                        classList={{
+                          "ink border-[color:var(--ink)]": tab() === t.key,
+                          "ink-2 border-transparent hover:text-[color:var(--ink)]": tab() !== t.key,
+                        }}>
+                        {t.label}
+                      </button>
+                    )}
+                  </For>
+                </div>
               </div>
 
               <div class="pt-4" role="tabpanel">
@@ -211,6 +223,9 @@ const BudgetPage: Component = () => {
                 <Show when={tab() === "accounts"}>
                   <Accounts store={store} />
                 </Show>
+                <Show when={tab() === "reconcile"}>
+                  <Reconcile store={store} />
+                </Show>
                 <Show when={tab() === "allocation"}>
                   <Investing store={store} />
                 </Show>
@@ -219,6 +234,9 @@ const BudgetPage: Component = () => {
                 </Show>
                 <Show when={tab() === "trends"}>
                   <Charts store={store} />
+                </Show>
+                <Show when={tab() === "banks"}>
+                  <Plaid store={store} />
                 </Show>
               </div>
             </div>
@@ -311,11 +329,13 @@ const AuthGate: Component<{ store: ReturnType<typeof createBudgetStore> }> = (pr
         <Show when={error()}>
           <p class="mt-3 t-meta neg">{error()}</p>
         </Show>
-        <button
-          onClick={() => navigate("/")}
-          class="mt-6 t-label ink-2 hover:text-[color:var(--ink)]">
-          ← back to site
-        </button>
+        <Show when={!isBudgetHost()}>
+          <button
+            onClick={() => navigate("/")}
+            class="mt-6 t-label ink-2 hover:text-[color:var(--ink)]">
+            ← back to site
+          </button>
+        </Show>
       </div>
     </div>
   );

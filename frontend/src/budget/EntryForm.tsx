@@ -68,8 +68,33 @@ const EntryForm: Component<Props> = (props) => {
   let descRef: HTMLInputElement | undefined;
   let debounce: number | undefined;
 
-  props.registerFocus(() => descRef?.focus());
-  onCleanup(() => window.clearTimeout(debounce));
+  /*
+   * On a phone this form is six controls tall, which pushes the register — the
+   * thing you opened the page to read — a screen and a half down. So it starts
+   * collapsed on small screens and expands on demand.
+   *
+   * The breakpoint is watched rather than read once: a phone rotated into
+   * landscape crosses it, and a collapsed form whose toggle has just been
+   * hidden by `sm:hidden` would be unreachable.
+   */
+  const wideQuery = window.matchMedia("(min-width: 640px)");
+  const [wide, setWide] = createSignal(wideQuery.matches);
+  const onBreakpoint = (e: MediaQueryListEvent) => setWide(e.matches);
+  wideQuery.addEventListener("change", onBreakpoint);
+
+  const [openOnPhone, setOpenOnPhone] = createSignal(false);
+  const open = () => wide() || openOnPhone();
+
+  // The "n" shortcut has to expand the form before it can focus into it.
+  props.registerFocus(() => {
+    setOpenOnPhone(true);
+    setTimeout(() => descRef?.focus());
+  });
+
+  onCleanup(() => {
+    window.clearTimeout(debounce);
+    wideQuery.removeEventListener("change", onBreakpoint);
+  });
 
   // Reset the sticky date when navigating to a different month.
   createEffect(() => {
@@ -178,110 +203,123 @@ const EntryForm: Component<Props> = (props) => {
 
   return (
     <section class="pb-5 mb-4 rule-b">
-      <h2 class="t-label ink-2 mb-2">Record a transaction</h2>
-
-      <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 items-start">
-        <input
-          type="date"
-          value={date()}
-          onInput={(e) => setDate(e.currentTarget.value)}
-          onKeyDown={onFieldKey}
-          class="field tabular-nums"
-          aria-label="Date"
-        />
-
-        <div class="relative col-span-1">
-          <input
-            ref={descRef}
-            type="text"
-            value={desc()}
-            onInput={(e) => onDescInput(e.currentTarget.value)}
-            onKeyDown={onDescKey}
-            onBlur={() => window.setTimeout(closeSuggest, 150)}
-            placeholder="Description"
-            class="field"
-            autocomplete="off"
-            spellcheck={false}
-            aria-label="Description"
-          />
-          <Show when={suggestOpen()}>
-            <ul class="absolute z-20 w-full bg-[#161b22] border border-[color:var(--rule-strong)] shadow-xl overflow-hidden">
-              <For each={suggestions()}>
-                {(s, i) => (
-                  <li>
-                    <button
-                      type="button"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        applySuggestion(s);
-                      }}
-                      class={
-                        "w-full text-left px-2 py-1.5 t-meta flex justify-between gap-2 " +
-                        (i() === suggestIndex() ? "bg-[#21262d]" : "hover:bg-[#21262d]")
-                      }>
-                      <span class="ink truncate">{s.description}</span>
-                      <span class="ink-2 shrink-0">{store.accountName(s.to_account_id)}</span>
-                    </button>
-                  </li>
-                )}
-              </For>
-            </ul>
-          </Show>
-        </div>
-
-        <input
-          type="text"
-          inputmode="decimal"
-          value={amount()}
-          onInput={(e) => setAmount(e.currentTarget.value)}
-          onKeyDown={onFieldKey}
-          placeholder="$0.00"
-          class="field text-right tabular-nums"
-          aria-label="Amount"
-        />
-
-        <select
-          value={String(fromId())}
-          onChange={(e) => setFromId(Number(e.currentTarget.value))}
-          onKeyDown={onFieldKey}
-          class="field truncate"
-          aria-label="From account">
-          <option value="0" disabled>
-            From…
-          </option>
-          <AccountOptions accounts={store.sourceAccounts()} />
-        </select>
-
-        <select
-          value={String(toId())}
-          onChange={(e) => setToId(Number(e.currentTarget.value))}
-          onKeyDown={onFieldKey}
-          class="field truncate"
-          aria-label="To account">
-          <option value="0" disabled>
-            To…
-          </option>
-          <AccountOptions accounts={store.destinationAccounts()} />
-        </select>
-
+      <div class="flex items-center justify-between gap-3 mb-2">
+        <h2 class="t-label ink-2">Record a transaction</h2>
         <button
-          type="button"
-          onClick={submit}
-          disabled={busy()}
-          class="btn w-full sm:w-auto col-span-2 sm:col-span-1 py-2">
-          {busy() ? "…" : "Add"}
+          onClick={() => setOpenOnPhone((v) => !v)}
+          class="btn sm:hidden"
+          aria-expanded={open()}>
+          {openOnPhone() ? "close" : "add"}
         </button>
       </div>
 
-      <Show when={error()}>
-        <p class="mt-2 t-meta neg">{error()}</p>
-      </Show>
+      <Show when={open()}>
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 items-start">
+          <input
+            type="date"
+            value={date()}
+            onInput={(e) => setDate(e.currentTarget.value)}
+            onKeyDown={onFieldKey}
+            class="field tabular-nums"
+            aria-label="Date"
+          />
 
-      {/* Not a keyboard hint — this is how the double-entry shape maps to real
-          transactions, which is the one thing the form can't show on its own. */}
-      <p class="mt-2.5 t-meta ink-2 opacity-70 leading-relaxed">
-        Paycheck → Checking · Discover → Groceries · Checking → Discover · Checking → HYSA
-      </p>
+          {/* Description gets the full width on a phone — it's the field you
+            actually type into, and half of 375px isn't enough. */}
+          <div class="relative col-span-2 sm:col-span-1">
+            <input
+              ref={descRef}
+              type="text"
+              value={desc()}
+              onInput={(e) => onDescInput(e.currentTarget.value)}
+              onKeyDown={onDescKey}
+              onBlur={() => window.setTimeout(closeSuggest, 150)}
+              placeholder="Description"
+              class="field"
+              autocomplete="off"
+              spellcheck={false}
+              aria-label="Description"
+            />
+            <Show when={suggestOpen()}>
+              <ul class="absolute z-20 w-full bg-[#161b22] border border-[color:var(--rule-strong)] shadow-xl overflow-hidden">
+                <For each={suggestions()}>
+                  {(s, i) => (
+                    <li>
+                      <button
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          applySuggestion(s);
+                        }}
+                        class={
+                          "w-full text-left px-2 py-1.5 t-meta flex justify-between gap-2 " +
+                          (i() === suggestIndex() ? "bg-[#21262d]" : "hover:bg-[#21262d]")
+                        }>
+                        <span class="ink truncate">{s.description}</span>
+                        <span class="ink-2 shrink-0">{store.accountName(s.to_account_id)}</span>
+                      </button>
+                    </li>
+                  )}
+                </For>
+              </ul>
+            </Show>
+          </div>
+
+          <input
+            type="text"
+            inputmode="decimal"
+            value={amount()}
+            onInput={(e) => setAmount(e.currentTarget.value)}
+            onKeyDown={onFieldKey}
+            placeholder="$0.00"
+            class="field text-right tabular-nums"
+            aria-label="Amount"
+          />
+
+          <select
+            value={String(fromId())}
+            onChange={(e) => setFromId(Number(e.currentTarget.value))}
+            onKeyDown={onFieldKey}
+            class="field truncate"
+            aria-label="From account">
+            <option value="0" disabled>
+              From…
+            </option>
+            <AccountOptions accounts={store.sourceAccounts()} />
+          </select>
+
+          <select
+            value={String(toId())}
+            onChange={(e) => setToId(Number(e.currentTarget.value))}
+            onKeyDown={onFieldKey}
+            class="field truncate"
+            aria-label="To account">
+            <option value="0" disabled>
+              To…
+            </option>
+            <AccountOptions accounts={store.destinationAccounts()} />
+          </select>
+
+          <button
+            type="button"
+            onClick={submit}
+            disabled={busy()}
+            class="btn w-full sm:w-auto col-span-2 sm:col-span-1 py-2">
+            {busy() ? "…" : "Add"}
+          </button>
+        </div>
+
+        <Show when={error()}>
+          <p class="mt-2 t-meta neg">{error()}</p>
+        </Show>
+
+        {/* Not a keyboard hint — this is how the double-entry shape maps to real
+          transactions, which is the one thing the form can't show on its own.
+          Desktop only: it costs two lines a phone can't spare. */}
+        <p class="mt-2.5 t-meta ink-2 opacity-70 leading-relaxed hidden sm:block">
+          Paycheck → Checking · Discover → Groceries · Checking → Discover · Checking → HYSA
+        </p>
+      </Show>
     </section>
   );
 };

@@ -22,6 +22,9 @@ backend/*.dylib
 .env.dev
 .env.prod
 .env.prod.example
+# Holds ADMIN_SECRET, the Turso token and, once live, the Plaid secret.
+# .env.vps.example is committed; the real file must never be.
+.env.vps
 .env.secrets
 *.secrets
 

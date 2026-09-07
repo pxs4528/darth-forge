@@ -8,6 +8,13 @@ import (
 	"time"
 )
 
+// secretTables never appear in a dump. Restoring one therefore leaves Plaid
+// unlinked, which is the right trade: re-linking is a two-minute job, and a
+// leaked access token is read access to somebody's bank.
+var secretTables = map[string]bool{
+	"plaid_items": true,
+}
+
 // Dump writes a portable SQL dump of every user table: DROP + CREATE + one
 // INSERT per row. Restoring is:  gunzip -c f.sql.gz | turso db shell <db>
 // (or paste into any SQLite shell). Our schema is small enough that a
@@ -32,6 +39,13 @@ func Dump(conn *sql.DB, w io.Writer) error {
 		if err := rows.Scan(&t.name, &t.createSQL); err != nil {
 			rows.Close()
 			return err
+		}
+		if secretTables[t.name] {
+			// Skipped entirely, schema included: this dump is fetched nightly
+			// to a laptop over HTTP and sits there unencrypted for 60 days.
+			// Bank access tokens have no business in it.
+			fmt.Fprintf(w, "-- %s omitted: contains live credentials\n", t.name)
+			continue
 		}
 		tables = append(tables, t)
 	}

@@ -54,7 +54,7 @@ const Dashboard: Component<Props> = (props) => {
   return (
     <section>
       {/* Column headers, same grid as the rows below. */}
-      <div class="grid grid-cols-[minmax(0,1fr)_5rem_5.5rem] sm:grid-cols-[minmax(0,1fr)_8rem_6rem_6rem] gap-3 t-label ink-2 pb-2 rule-b">
+      <div class="grid grid-cols-[minmax(0,1fr)_4.75rem_5rem] sm:grid-cols-[minmax(0,1fr)_8rem_6rem_6rem] gap-2 sm:gap-3 t-label ink-2 pb-2 rule-b">
         <span>Account</span>
         <span class="hidden sm:block" aria-hidden="true" />
         <span class="text-right">Spent</span>
@@ -67,7 +67,7 @@ const Dashboard: Component<Props> = (props) => {
           const groupBudget = () => rowsTotal(group.accounts, budgetFor);
           return (
             <div>
-              <div class="grid grid-cols-[minmax(0,1fr)_5rem_5.5rem] sm:grid-cols-[minmax(0,1fr)_8rem_6rem_6rem] gap-3 pt-4 pb-1.5 t-label ink">
+              <div class="grid grid-cols-[minmax(0,1fr)_4.75rem_5rem] sm:grid-cols-[minmax(0,1fr)_8rem_6rem_6rem] gap-2 sm:gap-3 pt-4 pb-1.5 t-label ink">
                 <span>{GROUP_LABELS[group.key] ?? group.key}</span>
                 <span class="hidden sm:block" aria-hidden="true" />
                 <span class="text-right tabular-nums ink-2">{amount(groupSpent())}</span>
@@ -81,7 +81,7 @@ const Dashboard: Component<Props> = (props) => {
                     const budget = () => budgetFor(a.id);
                     const status = () => budgetStatus(spent(), budget());
                     return (
-                      <div class="grid grid-cols-[minmax(0,1fr)_5rem_5.5rem] sm:grid-cols-[minmax(0,1fr)_8rem_6rem_6rem] gap-3 items-center py-1.5 t-meta">
+                      <div class="grid grid-cols-[minmax(0,1fr)_4.75rem_5rem] sm:grid-cols-[minmax(0,1fr)_8rem_6rem_6rem] gap-2 sm:gap-3 items-center py-1.5 t-meta">
                         <span class="ink truncate">
                           {a.name}
                           <Show when={status() === "over"}>
@@ -145,7 +145,7 @@ const Dashboard: Component<Props> = (props) => {
 
       {/* Total sits under a strong rule with extra top padding. */}
       <Show when={groups().length > 0}>
-        <div class="grid grid-cols-[minmax(0,1fr)_5rem_5.5rem] sm:grid-cols-[minmax(0,1fr)_8rem_6rem_6rem] gap-3 rule-strong-t pt-3 mt-1 t-label">
+        <div class="grid grid-cols-[minmax(0,1fr)_4.75rem_5rem] sm:grid-cols-[minmax(0,1fr)_8rem_6rem_6rem] gap-2 sm:gap-3 rule-strong-t pt-3 mt-1 t-label">
           <span class="ink">All spending</span>
           <span class="hidden sm:block" aria-hidden="true" />
           <span class="text-right t-meta tabular-nums ink">{amount(totalSpent())}</span>

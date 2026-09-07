@@ -14,7 +14,9 @@ import {
   type HistoryPoint,
   type Meta,
   type MonthState,
+  type ReconcileState,
   type Split,
+  type SyncMode,
 } from "./api";
 import { currentMonth, shiftMonth } from "./format";
 
@@ -442,6 +444,87 @@ export function createBudgetStore() {
 
   const suggest = (q: string) => guard(() => api.suggest(token(), q)).then((r) => r.suggestions);
 
+  // ── reconciliation ──
+  //
+  // The register is fetched on demand rather than held in the store: it's one
+  // account at a time and only the reconcile view wants it.
+
+  const loadRegister = (accountId: number) => guard(() => api.register(token(), accountId));
+
+  const setReconcile = (splitIds: number[], state: ReconcileState) =>
+    guard(() => api.setReconcile(token(), splitIds, state));
+
+  const lockAccount = async (accountId: number) => {
+    const { changed } = await guard(() => api.reconcileAccount(token(), accountId, "lock"));
+    await reload();
+    flash(`Locked ${changed} ${changed === 1 ? "entry" : "entries"}`);
+    return changed;
+  };
+
+  const unlockAccount = async (accountId: number) => {
+    const { changed } = await guard(() => api.reconcileAccount(token(), accountId, "unlock"));
+    await reload();
+    flash(`Reopened ${changed} ${changed === 1 ? "entry" : "entries"}`);
+    return changed;
+  };
+
+  // ── Plaid ──
+  //
+  // Thin pass-throughs: the Plaid tab owns its own view state, and syncing or
+  // accepting changes balances, so those reload the month.
+
+  const plaidStatus = () => guard(() => api.plaidStatus(token()));
+  const plaidStaged = () => guard(() => api.plaidStaged(token())).then((r) => r.staged);
+  const plaidLinkToken = (itemId?: string) =>
+    guard(() => api.plaidLinkToken(token(), itemId)).then((r) => r.link_token);
+
+  const plaidExchange = async (publicToken: string) => {
+    const res = await guard(() => api.plaidExchange(token(), publicToken));
+    flash(`Linked ${res.institution || "institution"} · ${res.accounts} accounts`);
+    return res;
+  };
+
+  const plaidMapAccount = (plaidAccountId: string, accountId: number, syncMode: SyncMode) =>
+    guard(() => api.plaidMapAccount(token(), plaidAccountId, accountId, syncMode));
+
+  const plaidUnlink = async (itemId: string) => {
+    await guard(() => api.plaidUnlink(token(), itemId));
+    flash("Unlinked — entries you already accepted are kept");
+  };
+
+  const plaidSync = async () => {
+    const report = await guard(() => api.plaidSync(token()));
+    await reload();
+    flash(
+      report.imported > 0
+        ? `Imported ${report.imported} — ${report.queued} to review`
+        : `Nothing new · ${report.queued} still to review`
+    );
+    return report;
+  };
+
+  const plaidAccept = async (plaidTxnId: string, counterAccountId: number, description: string) => {
+    const entry = await guard(() =>
+      api.plaidAccept(token(), plaidTxnId, counterAccountId, description)
+    );
+    await reload();
+    return entry;
+  };
+
+  const plaidIgnore = async (plaidTxnIds: string[]) => {
+    const res = await guard(() => api.plaidIgnore(token(), plaidTxnIds));
+    flash(`Dismissed ${res.ignored}`);
+    return res;
+  };
+
+  /** Wipes every entry so the book can be reopened at a chosen date. */
+  const resetLedger = async (confirm: string) => {
+    const { entries_deleted } = await guard(() => api.reset(token(), confirm));
+    await reload();
+    flash(`Deleted ${entries_deleted} entries — record opening balances next`);
+    return entries_deleted;
+  };
+
   return {
     // state
     token,
@@ -485,6 +568,20 @@ export function createBudgetStore() {
     saveBudget,
     saveGoal,
     suggest,
+    loadRegister,
+    setReconcile,
+    lockAccount,
+    unlockAccount,
+    resetLedger,
+    plaidStatus,
+    plaidStaged,
+    plaidLinkToken,
+    plaidExchange,
+    plaidMapAccount,
+    plaidUnlink,
+    plaidSync,
+    plaidAccept,
+    plaidIgnore,
     reload,
   };
 }

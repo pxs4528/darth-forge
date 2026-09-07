@@ -111,6 +111,129 @@ Two things worth knowing:
   move money between two accounts you own, so net worth is unchanged and the
   surplus already reflects them. Only expense accounts get budgets.
 
+## Reconciling against a statement
+
+Reconciling is how you prove the books match the bank. It runs one account
+against one statement period, on the **Reconcile** tab.
+
+1. Pick the account and type the statement's **closing balance**.
+2. Tick every entry that appears on that statement.
+3. The **Difference** figure has to reach zero. If it won't, either an entry
+   is missing, one is duplicated, or an amount is wrong — fix it on the
+   Register tab and come back.
+4. **Lock this statement.** Everything ticked moves to locked and is frozen:
+   editing or deleting a locked entry is refused with a 409 rather than
+   silently changing a period you already proved.
+
+Signs follow the statement, not the schema — a card statement shows what you
+owe as a positive number, so liabilities are flipped for display and the
+balance you type is read the same way.
+
+Reconciliation lives on the split, not the transaction, exactly as in GnuCash:
+a `Chase → Groceries` entry gets its Chase side reconciled against the Chase
+statement while the Groceries side never is. States are `n` (not reconciled),
+`c` (cleared) and `y` (locked).
+
+Two consequences worth knowing:
+
+- **Editing an unlocked entry drops its cleared marks.** The amount or
+  accounts may have moved, so the earlier tick-off no longer means anything.
+- **"reopen N locked" unlocks the whole account**, dropping everything back to
+  cleared. Use it when a statement was proved against bad data.
+
+## Bank sync (Plaid)
+
+Optional. Unset, everything below is inert and manual entry is unchanged.
+
+### Setup
+
+1. Sign up at [dashboard.plaid.com](https://dashboard.plaid.com/signup), then
+   Team Settings → Keys for `client_id` and the **Sandbox** secret.
+2. Put both in `.env.prod` (and `.env.dev`) with `PLAID_ENV=sandbox`.
+3. Exercise the whole flow against Plaid's fake bank first — Link accepts
+   `user_good` / `pass_good`.
+4. For real accounts, apply for the free **Trial plan**: 10 live Items, no
+   time limit, OAuth banks included. Swap in the Production secret and set
+   `PLAID_ENV=production`.
+
+An *Item* is one bank login, not one account — Chase checking and Chase credit
+share a login and cost one Item.
+
+### The two sync modes
+
+Set per account under the Plaid tab:
+
+| Mode | For | What happens |
+|---|---|---|
+| `transactions` | chequing, savings, cards | The feed is imported to a review queue |
+| `balance` | investments, 401k, HSA | Only the value is tracked |
+| `ignore` | anything else | Skipped |
+
+Balance mode exists because a retirement account's feed is dividends,
+reinvestments and rebalances that mean nothing without lot-level cost-basis
+tracking. What you actually want is that it's worth $X now, so the difference
+posts as a single entry against a **Market Movement** income account, created
+automatically. Plaid's own account type picks a sensible default; you can
+override it.
+
+### The review queue
+
+Nothing Plaid sends becomes an entry on its own. A bank feed only ever tells
+you one side — that $52.10 left Chase, never whether it was groceries or a
+transfer to savings — so a sync stages rows and proposes how each should post:
+
+- **Transfers between your own accounts are matched into one entry.** Opposite
+  signs, identical amount, within 4 days, both accounts mapped. Without this a
+  Checking → HYSA move imports twice and reads as income.
+- **Everything else is proposed from what you did last time** with the same
+  merchant, matching on the stable part of the description so
+  `TRADER JOE'S #412` and `TRADER JOE'S #998` count as the same place. With no
+  precedent it proposes nothing rather than guessing.
+
+Accepting a settled row marks the bank's side **cleared**, because it came
+from the bank's own record — which is exactly what clearing asserts. So
+reconciling an imported month is usually just checking the difference is zero
+and locking. Pending rows stay unreconciled: they can still change or vanish.
+
+### Security
+
+`plaid_items` holds live access tokens and is **excluded from `/dump`** — that
+dump is pulled to a laptop nightly over HTTP and kept for 60 days, which is no
+place for bank credentials. Restoring a backup therefore leaves Plaid
+unlinked; re-linking takes a couple of minutes.
+
+Tokens are stored unencrypted in Turso. Encrypting them with a key sitting in
+the same `.env` on the same Pi would be theatre — the trust boundary is the
+same one that already protects `ADMIN_SECRET`. Worth knowing rather than
+assuming otherwise.
+
+Unlinking an institution deletes its items, account mappings and *unreviewed*
+staged rows. Entries you already accepted stay: they're your bookkeeping now.
+
+## Starting a new book
+
+When manual entry has drifted far enough that correcting it costs more than
+redoing it, open a fresh book at a chosen date. Under Accounts → manage →
+**Start a new book**:
+
+1. Hit **backup** in the header first. That is the only undo.
+2. Type `DELETE ALL ENTRIES` and confirm. Every transaction and split is
+   deleted; accounts, asset classes, budget targets and the goal survive.
+3. For each account, use **opening $** and set the date to your start date
+   (e.g. `2026-08-01`) with the balance from that day's statement. The date
+   field is sticky, so you set it once.
+4. Enter that period's transactions from your statements, then reconcile.
+
+Opening balances are booked against the Opening Balances equity account, so
+the ledger stays balanced, and they're excluded from "added this month" —
+they establish the books rather than counting as growth.
+
+Restoring instead, if the reset was a mistake:
+
+```bash
+gunzip -c ~/Backups/budget/budget-YYYY-MM-DD.sql.gz | turso db shell <db>
+```
+
 ### Upgrading from the pre-double-entry schema
 
 The first boot after this change renames the old tables to `transactions_v1`,
@@ -160,8 +283,8 @@ Three ways to get dumps off the Pi:
 
 ## Keyboard shortcuts
 
-`?` help · `n` new transaction · `[`/`]` prev/next month · `j`/`k` select ·
-`e` edit · `x x` delete · `t` tracker · `Esc` close/cancel
+`?` help · `1`–`7` switch tab · `n` new transaction · `[`/`]` prev/next month ·
+`j`/`k` select · `e` edit · `x x` delete · `t` tracker · `Esc` close/cancel
 
 ## Useful queries
 
@@ -186,4 +309,12 @@ WHERE a.type IN ('asset','liability');
 -- proof the books balance: every entry must sum to zero, so this returns nothing
 SELECT txn_id, SUM(amount_cents) FROM splits
 GROUP BY txn_id HAVING SUM(amount_cents) != 0;
+
+-- what each account has reconciled: cleared/locked balance vs. the full one
+SELECT a.name,
+       SUM(CASE WHEN s.reconcile_state IN ('c','y') THEN s.amount_cents END)/100.0 AS cleared,
+       SUM(s.amount_cents)/100.0 AS actual
+FROM splits s JOIN accounts a ON a.id = s.account_id
+WHERE a.type IN ('asset','liability')
+GROUP BY a.name ORDER BY a.name;
 ```

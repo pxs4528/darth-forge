@@ -5,6 +5,7 @@ import (
 	"backend/internal/logger"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -46,6 +47,15 @@ func monthOf(date string) string {
 		return ""
 	}
 	return date[:7]
+}
+
+// statusFor distinguishes "you can't do that" from "it isn't there". A locked
+// entry exists — refusing it as a 404 would send you looking for the wrong bug.
+func statusFor(err error) int {
+	if errors.Is(err, db.ErrLocked) {
+		return http.StatusConflict
+	}
+	return http.StatusNotFound
 }
 
 // GET /api/admin/budget/meta — account types, budget groups and defaults.
@@ -222,7 +232,7 @@ func (h *BudgetHandler) HandleEntries(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err := db.UpdateEntry(h.conn, e); err != nil {
-			writeErr(w, http.StatusNotFound, err.Error())
+			writeErr(w, statusFor(err), err.Error())
 			return
 		}
 		writeJSON(w, http.StatusOK, e)
@@ -234,7 +244,7 @@ func (h *BudgetHandler) HandleEntries(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err := db.DeleteEntry(h.conn, id); err != nil {
-			writeErr(w, http.StatusNotFound, err.Error())
+			writeErr(w, statusFor(err), err.Error())
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"message": "deleted"})
@@ -356,7 +366,18 @@ func (h *BudgetHandler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"rows": rows})
+	// The row list is capped, so the cleared total has to come from the
+	// database — summing the returned rows would quietly under-count an
+	// account with a long history, which is the one number you can't get wrong.
+	cleared, err := db.ClearedBalance(h.conn, id)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"rows":          rows,
+		"cleared_cents": cleared,
+	})
 }
 
 // GET /api/admin/budget/suggest?q=heb
@@ -395,3 +416,115 @@ func (h *BudgetHandler) HandleDump(w http.ResponseWriter, r *http.Request) {
 		h.logger.Error("budget", "dump failed", map[string]interface{}{"error": err.Error()})
 	}
 }
+
+// PUT /api/admin/budget/reconcile — move splits between reconcile states.
+//
+// Bodies:
+//
+//	{"split_ids": [1,2], "state": "c"}    tick / untick
+//	{"account_id": 3, "action": "lock"}   end a statement you proved to zero
+//	{"account_id": 3, "action": "unlock"} reopen one
+func (h *BudgetHandler) HandleReconcile(w http.ResponseWriter, r *http.Request) {
+	if !h.ready(w) {
+		return
+	}
+	if r.Method != http.MethodPut {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	var body struct {
+		SplitIDs  []int64 `json:"split_ids"`
+		State     string  `json:"state"`
+		AccountID int64   `json:"account_id"`
+		Action    string  `json:"action"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+
+	switch body.Action {
+	case "lock", "unlock":
+		if body.AccountID <= 0 {
+			writeErr(w, http.StatusBadRequest, "account_id is required to lock or unlock")
+			return
+		}
+		var (
+			n   int64
+			err error
+		)
+		if body.Action == "lock" {
+			n, err = db.LockCleared(h.conn, body.AccountID)
+		} else {
+			n, err = db.UnlockAccount(h.conn, body.AccountID)
+		}
+		if err != nil {
+			h.logger.Error("budget", "reconcile "+body.Action+" failed",
+				map[string]interface{}{"error": err.Error()})
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]interface{}{"changed": n})
+
+	case "":
+		if len(body.SplitIDs) == 0 {
+			writeErr(w, http.StatusBadRequest, "split_ids is required")
+			return
+		}
+		if !db.ValidReconcileState(body.State) {
+			writeErr(w, http.StatusBadRequest, "state must be one of n, c, y")
+			return
+		}
+		n, err := db.SetReconcileState(h.conn, body.SplitIDs, body.State)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]interface{}{"changed": n})
+
+	default:
+		writeErr(w, http.StatusBadRequest, "action must be lock, unlock, or omitted")
+	}
+}
+
+// POST /api/admin/budget/reset — delete every entry, keeping the account
+// catalog, budgets and goal. This is how you open a fresh book at a chosen
+// date: wipe the entries, then record opening balances on your start date.
+//
+// Guarded by an exact confirmation phrase, because the only undo is the SQL
+// dump you were told to take first.
+func (h *BudgetHandler) HandleReset(w http.ResponseWriter, r *http.Request) {
+	if !h.ready(w) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	var body struct {
+		Confirm string `json:"confirm"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if body.Confirm != ResetConfirmPhrase {
+		writeErr(w, http.StatusBadRequest, "confirm must be exactly "+ResetConfirmPhrase)
+		return
+	}
+
+	deleted, err := db.ResetLedger(h.conn)
+	if err != nil {
+		h.logger.Error("budget", "ledger reset failed",
+			map[string]interface{}{"error": err.Error()})
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	h.logger.Info("budget", "ledger reset", map[string]interface{}{"entries_deleted": deleted})
+	writeJSON(w, http.StatusOK, map[string]interface{}{"entries_deleted": deleted})
+}
+
+// ResetConfirmPhrase must be typed exactly to wipe the ledger.
+const ResetConfirmPhrase = "DELETE ALL ENTRIES"
