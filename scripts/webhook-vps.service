@@ -1,0 +1,19 @@
+[Unit]
+Description=GitHub Webhook Listener for darth-forge VPS
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=deploy
+WorkingDirectory=/home/deploy/darth-forge
+Environment="WEBHOOK_PORT=9000"
+Environment="DEPLOY_SCRIPT=/home/deploy/darth-forge/scripts/deploy-vps.sh"
+ExecStart=/bin/bash -c 'export WEBHOOK_SECRET=$(cat /home/deploy/darth-forge/.webhook_secret 2>/dev/null || echo "changeme") && /usr/bin/python3 /home/deploy/darth-forge/webhook-listener.py'
+Restart=always
+RestartSec=10
+StandardOutput=append:/home/deploy/darth-forge/.webhook.log
+StandardError=append:/home/deploy/darth-forge/.webhook.log
+
+[Install]
+WantedBy=multi-user.target

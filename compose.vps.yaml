@@ -1,0 +1,76 @@
+# Standalone production stack for a rented VPS.
+#
+# Deliberately NOT an overlay on compose.yaml: that file publishes 8080 and
+# defines build contexts, and merging would leave conflicting port bindings.
+# The VPS never builds — it pulls the multi-arch images CI pushes to GHCR.
+#
+#   docker compose -f compose.vps.yaml up -d
+#
+# Requires .env.vps (see .env.vps.example) and both hostnames already pointing
+# at this machine, since Caddy fetches certificates on first start.
+
+services:
+  backend:
+    image: ghcr.io/pxs4528/darth-forge-backend:latest
+    container_name: darth-forge-backend
+    env_file:
+      - .env.vps
+    environment:
+      - ENV=production
+    # No published ports: only Caddy talks to it, over the compose network.
+    expose:
+      - "8080"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    image: ghcr.io/pxs4528/darth-forge-frontend:latest
+    container_name: darth-forge-frontend
+    command: caddy run --config /etc/caddy/Caddyfile.vps --adapter caddyfile
+    env_file:
+      - .env.vps
+    environment:
+      - WEB_ROOT=/srv
+      - API_HOST=backend
+      - API_PORT=8080
+      - INFOSEC_HOST=infosec
+      - INFOSEC_PORT=5000
+    ports:
+      - "80:80"
+      - "443:443"
+      # Budget also listens on Tailscale IP
+      - "${TAILSCALE_IP}:80:80"
+      - "${TAILSCALE_IP}:443:443"
+    volumes:
+      # Certificates and ACME account state. Without this every restart
+      # re-requests certificates and will hit Let's Encrypt rate limits.
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  # Opt-in: `docker compose -f compose.vps.yaml --profile infosec up -d`
+  #
+  # Off by default on a rented box. It serves content from a mounted directory
+  # that lives on the Pi (/home/darth/infosec); on a fresh VPS that directory
+  # is empty, so the container would start and serve nothing while costing
+  # ~150 MB — which is the difference between comfortable and tight on a 1 GB
+  # instance. Populate ./infosec-data first if you want it.
+  infosec:
+    image: ghcr.io/pxs4528/darth-forge-infosec:latest
+    container_name: darth-forge-infosec
+    profiles: ["infosec"]
+    volumes:
+      - ./infosec-data:/infosec:ro
+    expose:
+      - "5000"
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

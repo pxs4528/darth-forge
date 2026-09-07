@@ -1,7 +1,7 @@
 name: CI + Deploy
 
-# Push to main: test → build multi-arch images → push to GHCR → ping the Pi,
-# which only pulls and restarts. The Pi never builds anything.
+# Push to main: test → build multi-arch images → push to GHCR → ping the VPS,
+# which only pulls and restarts. The VPS never builds anything.
 # Pull requests: tests only.
 
 on:
@@ -101,10 +101,10 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger Pi deployment webhook
+      - name: Trigger VPS deployment webhook
         env:
-          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
-          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL_VPS }}
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET_VPS }}
         run: |
           PAYLOAD='{"ref":"${{ github.ref }}","repository":"${{ github.repository }}","pusher":"${{ github.actor }}","sha":"${{ github.sha }}"}'
 
@@ -116,6 +116,6 @@ jobs:
             -H "X-GitHub-Event: push" \
             -d "$PAYLOAD" \
             --max-time 10 \
-            --retry 2 || echo "Warning: webhook delivery failed — run deploy.sh on the Pi manually"
+            --retry 2 || echo "Warning: webhook delivery failed — run scripts/deploy-vps.sh on the VPS manually"
 
           echo "✓ Deployment webhook sent"
