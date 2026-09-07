@@ -9,7 +9,7 @@
 
 set -euo pipefail
 
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/.."
 
 COMPOSE_FILE="compose.vps.yaml"
 ENV_FILE=".env.vps"

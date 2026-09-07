@@ -17,7 +17,6 @@
 # ── portfolio (public) ───────────────────────────────────────────────────────
 
 {$SITE_DOMAIN} {
-	bind 0.0.0.0
 	root * {$WEB_ROOT:/srv}
 	encode gzip
 
@@ -57,7 +56,6 @@
 # ── budget (private, Tailscale only) ────────────────────────────────────────
 
 {$BUDGET_DOMAIN} {
-	bind {$TAILSCALE_IP}
 	root * {$WEB_ROOT:/srv}
 	encode gzip
 
