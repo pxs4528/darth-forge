@@ -43,11 +43,10 @@ services:
       - "80:80"
       - "443:443"
       # Budget also listens on Tailscale IP
-      - "${TAILSCALE_IP}:80:80"
-      - "${TAILSCALE_IP}:443:443"
     volumes:
       # Certificates and ACME account state. Without this every restart
       # re-requests certificates and will hit Let's Encrypt rate limits.
+      - ./frontend/Caddyfile.vps:/etc/caddy/Caddyfile.vps:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
