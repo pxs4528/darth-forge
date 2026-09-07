@@ -101,6 +101,64 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate .env.vps from secrets
+        env:
+          SITE_DOMAIN: ${{ secrets.SITE_DOMAIN }}
+          BUDGET_DOMAIN: ${{ secrets.BUDGET_DOMAIN }}
+          TAILSCALE_IP: ${{ secrets.TAILSCALE_IP }}
+          ACME_EMAIL: ${{ secrets.ACME_EMAIL }}
+          ADMIN_SECRET: ${{ secrets.ADMIN_SECRET }}
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+          BACKUP_TOKEN: ${{ secrets.BACKUP_TOKEN }}
+          PLAID_CLIENT_ID: ${{ secrets.PLAID_CLIENT_ID }}
+          PLAID_SECRET: ${{ secrets.PLAID_SECRET }}
+          PLAID_ENV: ${{ secrets.PLAID_ENV }}
+          USCIS_CASE_URL: ${{ secrets.USCIS_CASE_URL }}
+          USCIS_COOKIE: ${{ secrets.USCIS_COOKIE }}
+          USCIS_BEARER: ${{ secrets.USCIS_BEARER }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}
+        run: |
+          cat > .env.vps <<'EOF'
+          SITE_DOMAIN=${{ env.SITE_DOMAIN }}
+          BUDGET_DOMAIN=${{ env.BUDGET_DOMAIN }}
+          TAILSCALE_IP=${{ env.TAILSCALE_IP }}
+          ACME_EMAIL=${{ env.ACME_EMAIL }}
+          ADMIN_SECRET=${{ env.ADMIN_SECRET }}
+          TURSO_DATABASE_URL=${{ env.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN=${{ env.TURSO_AUTH_TOKEN }}
+          BACKUP_TOKEN=${{ env.BACKUP_TOKEN }}
+          PLAID_CLIENT_ID=${{ env.PLAID_CLIENT_ID }}
+          PLAID_SECRET=${{ env.PLAID_SECRET }}
+          PLAID_ENV=${{ env.PLAID_ENV }}
+          USCIS_CASE_URL=${{ env.USCIS_CASE_URL }}
+          USCIS_COOKIE=${{ env.USCIS_COOKIE }}
+          USCIS_BEARER=${{ env.USCIS_BEARER }}
+          NTFY_TOPIC=${{ env.NTFY_TOPIC }}
+          NTFY_TOKEN=${{ env.NTFY_TOKEN }}
+          WEB_ROOT=/srv
+          API_HOST=backend
+          API_PORT=8080
+          INFOSEC_HOST=infosec
+          INFOSEC_PORT=5000
+          EOF
+
+      - name: Copy .env.vps to VPS via SCP
+        env:
+          SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/vps_key
+          chmod 600 ~/.ssh/vps_key
+          scp -i ~/.ssh/vps_key -o StrictHostKeyChecking=no \
+            .env.vps ${VPS_USER}@${VPS_HOST}:~/darth-forge/.env.vps
+          rm ~/.ssh/vps_key
+
       - name: Trigger VPS deployment webhook
         env:
           WEBHOOK_URL: ${{ secrets.WEBHOOK_URL_VPS }}
