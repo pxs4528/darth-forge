@@ -1,0 +1,91 @@
+# Public VPS deployment: two hostnames, one image, automatic HTTPS.
+#
+# The Pi deployment (frontend/Caddyfile) sits behind a Cloudflare Tunnel and
+# terminates nothing. Here Caddy is directly exposed on 80/443 and gets its own
+# Let's Encrypt certificates, so both ports must be open and both hostnames
+# must already resolve to this machine before it starts.
+#
+# The split is the point: the portfolio and the budget tool are separate
+# origins. The ledger and the Plaid access tokens are not reachable from the
+# public site's hostname at all, so a flaw in the public surface can't be
+# walked into the finances, and the two hosts can carry different access rules.
+
+{
+	email {$ACME_EMAIL}
+}
+
+# ── portfolio (public) ───────────────────────────────────────────────────────
+
+{$SITE_DOMAIN} {
+	bind 0.0.0.0
+	root * {$WEB_ROOT:/srv}
+	encode gzip
+
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer-when-downgrade"
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	}
+
+	# The budget tool lives on its own hostname. Refusing it here means the
+	# admin login isn't even reachable from the address that gets crawled,
+	# scanned and linked. 404 rather than 403: no need to confirm it exists.
+	handle /budget* {
+		respond "Not Found" 404
+	}
+	handle /api/admin/* {
+		respond "Not Found" 404
+	}
+
+	# Order matters: more specific first.
+	handle /api/infosec/* {
+		reverse_proxy {$INFOSEC_HOST:infosec}:{$INFOSEC_PORT:5000}
+	}
+
+	handle /api/* {
+		reverse_proxy {$API_HOST:backend}:{$API_PORT:8080}
+	}
+
+	# SPA routing — index.html for anything not on disk.
+	handle {
+		try_files {path} /index.html
+		file_server
+	}
+}
+
+# ── budget (private, Tailscale only) ────────────────────────────────────────
+
+{$BUDGET_DOMAIN} {
+	bind {$TAILSCALE_IP}
+	root * {$WEB_ROOT:/srv}
+	encode gzip
+
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		# Nothing here should ever reach an index.
+		X-Robots-Tag "noindex, nofollow, noarchive"
+	}
+
+	respond /robots.txt 200 {
+		body "User-agent: *
+Disallow: /
+"
+	}
+
+	# Only the budget API. /api/infosec is deliberately not routed here — this
+	# host exposes the smallest surface that still works.
+	handle /api/* {
+		reverse_proxy {$API_HOST:backend}:{$API_PORT:8080}
+	}
+
+	# The router resolves "/" to the budget app on this hostname, so the same
+	# bundle serves both sites. See frontend/src/lib/router.ts.
+	handle {
+		try_files {path} /index.html
+		file_server
+	}
+}
