@@ -1,7 +1,7 @@
 # Stage 1: Build the Go binary.
 # --platform=$BUILDPLATFORM keeps this stage native on the CI runner (amd64);
 # Go cross-compiles to the target arch via GOOS/GOARCH — no QEMU, fast builds.
-FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.21-alpine AS builder
+FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.25-alpine AS builder
 
 ARG TARGETOS
 ARG TARGETARCH
