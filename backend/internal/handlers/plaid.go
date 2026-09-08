@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
@@ -25,10 +26,34 @@ type PlaidHandler struct {
 	logger *logger.Logger
 	conn   *sql.DB
 	client *plaid.Client
+	// importStart is a YYYY-MM-DD floor on imported transactions, or "" for no
+	// floor. Plaid's first sync backfills up to 24 months, which for a book
+	// opened part-way through the year is hundreds of rows that are already
+	// inside the opening balances — importing them would double-count and bury
+	// the rows actually worth reviewing.
+	importStart string
 }
 
 func NewPlaidHandler(log *logger.Logger, conn *sql.DB, client *plaid.Client) *PlaidHandler {
-	return &PlaidHandler{logger: log, conn: conn, client: client}
+	h := &PlaidHandler{logger: log, conn: conn, client: client}
+
+	if v := strings.TrimSpace(os.Getenv("PLAID_IMPORT_START")); v != "" {
+		// Fail open on a malformed date: importing too much is a nuisance,
+		// importing nothing looks like a broken sync and would be chased for
+		// hours before anyone suspected a typo in an env var.
+		if _, err := time.Parse("2006-01-02", v); err != nil {
+			log.Error("plaid", "PLAID_IMPORT_START is not a YYYY-MM-DD date, ignoring", map[string]interface{}{
+				"value": v, "error": err.Error(),
+			})
+		} else {
+			h.importStart = v
+			log.Info("plaid", "skipping imported transactions before start date", map[string]interface{}{
+				"import_start": v,
+			})
+		}
+	}
+
+	return h
 }
 
 // ready reports 503 rather than 500 when Plaid or Turso is unconfigured, so a
@@ -92,10 +117,11 @@ func (h *PlaidHandler) HandleStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"configured": true,
-		"env":        h.client.Env(),
-		"items":      items,
-		"accounts":   accounts,
+		"configured":   true,
+		"env":          h.client.Env(),
+		"import_start": h.importStart,
+		"items":        items,
+		"accounts":     accounts,
 	})
 }
 
@@ -364,7 +390,8 @@ func (h *PlaidHandler) HandleSync(w http.ResponseWriter, r *http.Request) {
 	result.Transfers = len(pairs) / 2
 	h.logger.Info("plaid", "sync complete", map[string]interface{}{
 		"imported": result.Imported, "queued": result.Queued,
-		"transfers": result.Transfers, "problems": len(result.Problems),
+		"transfers": result.Transfers, "skipped": result.Skipped,
+		"problems": len(result.Problems),
 	})
 	writeJSON(w, http.StatusOK, result)
 }
@@ -374,6 +401,7 @@ type syncReport struct {
 	Queued    int      `json:"queued"`    // total awaiting review
 	Transfers int      `json:"transfers"` // matched internal transfers
 	Balances  int      `json:"balances"`  // balance-synced accounts updated
+	Skipped   int      `json:"skipped"`   // dropped as older than PLAID_IMPORT_START
 	Problems  []string `json:"problems"`
 }
 
@@ -404,6 +432,13 @@ func (h *PlaidHandler) syncItem(
 		for _, t := range append(res.Added, res.Modified...) {
 			// Only accounts you've mapped and set to import transactions.
 			if mode[t.AccountID] != db.SyncTransactions || ledger[t.AccountID] == 0 {
+				continue
+			}
+			// Dates are YYYY-MM-DD, so lexical order is chronological order.
+			// The cursor still advances past these, so they're skipped once
+			// rather than re-offered on every sync.
+			if h.importStart != "" && t.Date < h.importStart {
+				out.Skipped++
 				continue
 			}
 			staged = append(staged, db.Staged{
