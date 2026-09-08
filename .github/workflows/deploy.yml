@@ -116,6 +116,7 @@ jobs:
           PLAID_CLIENT_ID: ${{ secrets.PLAID_CLIENT_ID }}
           PLAID_SECRET: ${{ secrets.PLAID_SECRET }}
           PLAID_ENV: ${{ secrets.PLAID_ENV }}
+          PLAID_IMPORT_START: ${{ secrets.PLAID_IMPORT_START }}
           USCIS_CASE_URL: ${{ secrets.USCIS_CASE_URL }}
           USCIS_COOKIE: ${{ secrets.USCIS_COOKIE }}
           USCIS_BEARER: ${{ secrets.USCIS_BEARER }}
@@ -134,6 +135,7 @@ jobs:
           PLAID_CLIENT_ID=${{ env.PLAID_CLIENT_ID }}
           PLAID_SECRET=${{ env.PLAID_SECRET }}
           PLAID_ENV=${{ env.PLAID_ENV }}
+          PLAID_IMPORT_START=${{ env.PLAID_IMPORT_START }}
           USCIS_CASE_URL=${{ env.USCIS_CASE_URL }}
           USCIS_COOKIE=${{ env.USCIS_COOKIE }}
           USCIS_BEARER=${{ env.USCIS_BEARER }}
