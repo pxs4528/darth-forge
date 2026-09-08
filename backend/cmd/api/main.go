@@ -111,6 +111,12 @@ func main() {
 	http.HandleFunc("/api/admin/budget/plaid/accept", handlers.AdminOnly(plaidHandler.HandleAccept))
 	http.HandleFunc("/api/admin/budget/plaid/ignore", handlers.AdminOnly(plaidHandler.HandleIgnore))
 
+	// Learning dashboard (protected)
+	http.HandleFunc("/api/admin/learn", handlers.AdminOnly(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		http.ServeFile(w, r, "frontend/public/learn.html")
+	}))
+
 	log.Info("server", "Server starting on :8080", nil)
 	if err := http.ListenAndServe(":8080", nil); err != nil {
 		log.Error("server", "Server failed to start", map[string]interface{}{
