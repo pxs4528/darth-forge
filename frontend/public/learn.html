@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Darth Forge Learning Path</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg: #0f1419;
+            --surface: #1a1f26;
+            --text: #e1e8ed;
+            --text-dim: #8b949e;
+            --primary: #58a6ff;
+            --success: #3fb950;
+            --warning: #d29922;
+            --danger: #f85149;
+            --info: #79c0ff;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 40px;
+            border-bottom: 2px solid var(--surface);
+            padding-bottom: 30px;
+        }
+
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, var(--primary), var(--info));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            color: var(--text-dim);
+            font-size: 1.1em;
+            margin-bottom: 20px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background-color: var(--surface);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 15px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--success), var(--info));
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .stats {
+            display: flex;
+            gap: 30px;
+            justify-content: center;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+
+        .stat {
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 2em;
+            font-weight: bold;
+            color: var(--primary);
+        }
+
+        .stat-label {
+            color: var(--text-dim);
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+
+        .topics {
+            display: grid;
+            gap: 40px;
+            margin-top: 40px;
+        }
+
+        .topic {
+            background-color: var(--surface);
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid rgba(88, 166, 255, 0.1);
+        }
+
+        .topic-header {
+            background: linear-gradient(135deg, rgba(88, 166, 255, 0.1), rgba(121, 192, 255, 0.05));
+            padding: 20px;
+            border-bottom: 1px solid rgba(88, 166, 255, 0.1);
+        }
+
+        .topic-title {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .topic-count {
+            background-color: rgba(88, 166, 255, 0.2);
+            color: var(--primary);
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+
+        .stories {
+            display: flex;
+            flex-direction: column;
+            divide-y: 1px solid rgba(88, 166, 255, 0.05);
+        }
+
+        .story {
+            padding: 16px 20px;
+            display: flex;
+            align-items: flex-start;
+            gap: 15px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .story:hover {
+            background-color: rgba(88, 166, 255, 0.05);
+        }
+
+        .story-checkbox {
+            width: 20px;
+            height: 20px;
+            border: 2px solid var(--text-dim);
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+
+        .story-checkbox input {
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+            accent-color: var(--success);
+        }
+
+        .story-content {
+            flex: 1;
+        }
+
+        .story-title {
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 4px;
+        }
+
+        .story-meta {
+            display: flex;
+            gap: 10px;
+            font-size: 0.85em;
+            margin-top: 6px;
+            flex-wrap: wrap;
+        }
+
+        .badge {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 0.75em;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .badge-fundamentals {
+            background-color: rgba(63, 185, 80, 0.15);
+            color: var(--success);
+        }
+
+        .badge-hands-on {
+            background-color: rgba(88, 166, 255, 0.15);
+            color: var(--primary);
+        }
+
+        .badge-debugging {
+            background-color: rgba(248, 81, 73, 0.15);
+            color: var(--danger);
+        }
+
+        .badge-enhancement {
+            background-color: rgba(210, 153, 34, 0.15);
+            color: var(--warning);
+        }
+
+        .story-description {
+            color: var(--text-dim);
+            font-size: 0.9em;
+            margin-top: 6px;
+        }
+
+        .story.completed .story-title {
+            color: var(--text-dim);
+            text-decoration: line-through;
+        }
+
+        .story.completed .story-checkbox {
+            background-color: var(--success);
+            border-color: var(--success);
+        }
+
+        .difficulty {
+            display: inline-block;
+            font-size: 0.75em;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-weight: 600;
+        }
+
+        .difficulty-1 {
+            background-color: rgba(63, 185, 80, 0.2);
+            color: var(--success);
+        }
+
+        .difficulty-2 {
+            background-color: rgba(88, 166, 255, 0.2);
+            color: var(--primary);
+        }
+
+        .difficulty-3 {
+            background-color: rgba(210, 153, 34, 0.2);
+            color: var(--warning);
+        }
+
+        .difficulty-4 {
+            background-color: rgba(248, 81, 73, 0.2);
+            color: var(--danger);
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 60px;
+            padding-top: 30px;
+            border-top: 1px solid var(--surface);
+            color: var(--text-dim);
+            font-size: 0.9em;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 1.8em;
+            }
+
+            .stats {
+                gap: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🚀 Darth Forge Learning Path</h1>
+            <p class="subtitle">Master your full-stack app from Go backend to React frontend</p>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <div class="stats">
+                <div class="stat">
+                    <div class="stat-number" id="completedCount">0</div>
+                    <div class="stat-label">Completed</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-number" id="totalCount">0</div>
+                    <div class="stat-label">Total Stories</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-number" id="streakCount">0</div>
+                    <div class="stat-label">Day Streak</div>
+                </div>
+            </div>
+        </header>
+
+        <div class="topics" id="topicsContainer"></div>
+
+        <div class="footer">
+            <p>Track your progress as you learn. Complete stories to unlock the next challenge!</p>
+            <p style="margin-top: 10px;">💡 Tip: Your progress is saved locally in your browser</p>
+        </div>
+    </div>
+
+    <script>
+        const stories = {
+            frontend: {
+                emoji: '⚛️',
+                title: 'Frontend (React/TypeScript)',
+                stories: [
+                    { id: 'fe-1', title: 'Understanding React Components', description: 'Learn how React components work using your actual Budget app code', type: 'fundamentals', difficulty: 1 },
+                    { id: 'fe-2', title: 'State Management with Zustand', description: 'Deep dive into your store.ts and how state flows through the app', type: 'fundamentals', difficulty: 1 },
+                    { id: 'fe-3', title: 'Making API Calls', description: 'Understand how your frontend talks to the backend via api.ts', type: 'fundamentals', difficulty: 1 },
+                    { id: 'fe-4', title: 'Hooks & Effects', description: 'Master useEffect, useMemo, and custom hooks in your app', type: 'hands-on', difficulty: 2 },
+                    { id: 'fe-5', title: 'Forms & Validation', description: 'Build and validate forms like EntryForm.tsx does', type: 'hands-on', difficulty: 2 },
+                    { id: 'fe-6', title: 'Add a New Budget Category', description: 'Challenge: Add a new feature to the budget component from scratch', type: 'debugging', difficulty: 3 },
+                    { id: 'fe-7', title: 'Routing & Navigation', description: 'Understand how router.ts connects your pages', type: 'hands-on', difficulty: 2 },
+                    { id: 'fe-8', title: 'Performance Optimization', description: 'Enhancement: Optimize renders and add real-time sync across tabs', type: 'enhancement', difficulty: 4 },
+                ]
+            },
+            backend: {
+                emoji: '🔨',
+                title: 'Backend (Go)',
+                stories: [
+                    { id: 'be-1', title: 'Go Basics & Your Handlers', description: 'Learn Go syntax using your actual handler functions', type: 'fundamentals', difficulty: 1 },
+                    { id: 'be-2', title: 'HTTP Routing in main.go', description: 'Understand how your Go server routes requests', type: 'fundamentals', difficulty: 1 },
+                    { id: 'be-3', title: 'Database Queries', description: 'Learn SQL through your actual queries in ledger.go', type: 'fundamentals', difficulty: 1 },
+                    { id: 'be-4', title: 'Admin Authentication Flow', description: 'Trace how the ADMIN_SECRET protects your endpoints', type: 'hands-on', difficulty: 2 },
+                    { id: 'be-5', title: 'Error Handling Patterns', description: 'See how your code handles and returns errors', type: 'hands-on', difficulty: 2 },
+                    { id: 'be-6', title: 'Build a New API Endpoint', description: 'Challenge: Add a completely new endpoint from scratch', type: 'debugging', difficulty: 3 },
+                    { id: 'be-7', title: 'Middleware & Logging', description: 'Add request logging middleware to your server', type: 'hands-on', difficulty: 2 },
+                    { id: 'be-8', title: 'Testing Go Handlers', description: 'Write unit tests for your API endpoints', type: 'hands-on', difficulty: 2 },
+                    { id: 'be-9', title: 'Caching & Performance', description: 'Enhancement: Add caching to expensive database queries', type: 'enhancement', difficulty: 4 },
+                    { id: 'be-10', title: 'Request/Response Lifecycle', description: 'Trace a request from client to database and back', type: 'hands-on', difficulty: 3 },
+                ]
+            },
+            database: {
+                emoji: '💾',
+                title: 'Database (Turso/SQLite)',
+                stories: [
+                    { id: 'db-1', title: 'Your Database Schema', description: 'Understand your tables, columns, and relationships in Turso', type: 'fundamentals', difficulty: 1 },
+                    { id: 'db-2', title: 'SQL Queries Your App Uses', description: 'Learn SQL by reading your actual queries', type: 'fundamentals', difficulty: 1 },
+                    { id: 'db-3', title: 'Database Migrations', description: 'Understand how your schema changes are managed', type: 'hands-on', difficulty: 2 },
+                    { id: 'db-4', title: 'Write Complex Queries', description: 'Challenge: Write a complex query with JOINs and aggregations', type: 'debugging', difficulty: 3 },
+                    { id: 'db-5', title: 'Data Relationships & Constraints', description: 'Learn foreign keys and data integrity in your app', type: 'hands-on', difficulty: 2 },
+                    { id: 'db-6', title: 'Query Optimization', description: 'Enhancement: Add indexes and optimize slow queries', type: 'enhancement', difficulty: 4 },
+                ]
+            },
+            cicd: {
+                emoji: '🚁',
+                title: 'CI/CD & Deployment',
+                stories: [
+                    { id: 'ci-1', title: 'GitHub Actions Basics', description: 'Understand how your workflow file works', type: 'fundamentals', difficulty: 1 },
+                    { id: 'ci-2', title: 'Your Workflow Breakdown', description: 'Step through each job in deploy.yml', type: 'fundamentals', difficulty: 1 },
+                    { id: 'ci-3', title: 'Docker Images & Builds', description: 'Learn how your Dockerfiles create images', type: 'fundamentals', difficulty: 1 },
+                    { id: 'ci-4', title: 'GHCR Registry', description: 'Understand how images are pushed and stored', type: 'hands-on', difficulty: 2 },
+                    { id: 'ci-5', title: 'The Webhook Flow', description: 'Trace how GitHub triggers VPS deployment', type: 'hands-on', difficulty: 2 },
+                    { id: 'ci-6', title: 'Deployment Breaks', description: 'Challenge: Production broke - diagnose and fix it', type: 'debugging', difficulty: 3 },
+                    { id: 'ci-7', title: 'Secrets Management', description: 'Learn why GITHUB_TOKEN and other secrets matter', type: 'hands-on', difficulty: 2 },
+                    { id: 'ci-8', title: 'Environment Variables', description: 'Understand .env.vps and environment configuration', type: 'hands-on', difficulty: 2 },
+                    { id: 'ci-9', title: 'Add a Staging Environment', description: 'Enhancement: Create a staging deploy pipeline', type: 'enhancement', difficulty: 4 },
+                    { id: 'ci-10', title: 'Rollback & Disaster Recovery', description: 'Learn how to recover when deployment fails', type: 'hands-on', difficulty: 3 },
+                ]
+            },
+            architecture: {
+                emoji: '🏗️',
+                title: 'Architecture & Integration',
+                stories: [
+                    { id: 'arch-1', title: 'Request Lifecycle', description: 'Trace a user action from click → frontend → backend → database', type: 'fundamentals', difficulty: 1 },
+                    { id: 'arch-2', title: 'How Frontend Talks to Backend', description: 'Understand CORS, API endpoints, and data flow', type: 'fundamentals', difficulty: 1 },
+                    { id: 'arch-3', title: 'Authentication & Security', description: 'Learn how your admin auth protects endpoints', type: 'fundamentals', difficulty: 1 },
+                    { id: 'arch-4', title: 'Error Handling Across Layers', description: 'Trace errors from backend to frontend display', type: 'hands-on', difficulty: 2 },
+                    { id: 'arch-5', title: 'State Sync & Consistency', description: 'Understand how frontend and backend stay in sync', type: 'hands-on', difficulty: 2 },
+                    { id: 'arch-6', title: 'Trace a Bug Through the Stack', description: 'Challenge: Bug appears in UI - find root cause in code', type: 'debugging', difficulty: 3 },
+                    { id: 'arch-7', title: 'Monitoring & Debugging', description: 'Learn to debug issues in production', type: 'hands-on', difficulty: 3 },
+                    { id: 'arch-8', title: 'Build a Feature End-to-End', description: 'Enhancement: Add a new feature touching every layer', type: 'enhancement', difficulty: 4 },
+                ]
+            }
+        };
+
+        function initializeDashboard() {
+            const container = document.getElementById('topicsContainer');
+            let totalStories = 0;
+
+            Object.entries(stories).forEach(([key, topic]) => {
+                totalStories += topic.stories.length;
+                const topicEl = createTopicElement(topic);
+                container.appendChild(topicEl);
+            });
+
+            document.getElementById('totalCount').textContent = totalStories;
+            updateProgress();
+        }
+
+        function createTopicElement(topic) {
+            const topicDiv = document.createElement('div');
+            topicDiv.className = 'topic';
+
+            const header = document.createElement('div');
+            header.className = 'topic-header';
+            header.innerHTML = `
+                <div class="topic-title">
+                    <span>${topic.emoji}</span>
+                    <span>${topic.title}</span>
+                    <span class="topic-count">${topic.stories.length} stories</span>
+                </div>
+            `;
+
+            const storiesDiv = document.createElement('div');
+            storiesDiv.className = 'stories';
+
+            topic.stories.forEach(story => {
+                const storyEl = createStoryElement(story);
+                storiesDiv.appendChild(storyEl);
+            });
+
+            topicDiv.appendChild(header);
+            topicDiv.appendChild(storiesDiv);
+
+            return topicDiv;
+        }
+
+        function createStoryElement(story) {
+            const storyDiv = document.createElement('div');
+            storyDiv.className = 'story';
+            storyDiv.id = story.id;
+
+            const isCompleted = getCompletedStories().includes(story.id);
+            if (isCompleted) storyDiv.classList.add('completed');
+
+            const typeEmojis = {
+                'fundamentals': '📚',
+                'hands-on': '🛠️',
+                'debugging': '🔥',
+                'enhancement': '💎'
+            };
+
+            const difficultyText = ['Easy', 'Medium', 'Hard', 'Expert'][story.difficulty - 1];
+
+            storyDiv.innerHTML = `
+                <div class="story-checkbox">
+                    <input type="checkbox" ${isCompleted ? 'checked' : ''}>
+                </div>
+                <div class="story-content">
+                    <div class="story-title">${story.title}</div>
+                    <div class="story-description">${story.description}</div>
+                    <div class="story-meta">
+                        <span class="badge badge-${story.type}">${typeEmojis[story.type]} ${story.type}</span>
+                        <span class="difficulty difficulty-${story.difficulty}">${difficultyText}</span>
+                    </div>
+                </div>
+            `;
+
+            storyDiv.querySelector('input').addEventListener('change', (e) => {
+                toggleStory(story.id, e.target.checked);
+                storyDiv.classList.toggle('completed');
+                updateProgress();
+            });
+
+            return storyDiv;
+        }
+
+        function toggleStory(storyId, completed) {
+            const completed_stories = getCompletedStories();
+            if (completed) {
+                if (!completed_stories.includes(storyId)) {
+                    completed_stories.push(storyId);
+                }
+            } else {
+                const index = completed_stories.indexOf(storyId);
+                if (index > -1) {
+                    completed_stories.splice(index, 1);
+                }
+            }
+            localStorage.setItem('completedStories', JSON.stringify(completed_stories));
+        }
+
+        function getCompletedStories() {
+            const stored = localStorage.getItem('completedStories');
+            return stored ? JSON.parse(stored) : [];
+        }
+
+        function updateProgress() {
+            const completed = getCompletedStories().length;
+            const total = document.getElementById('totalCount').textContent;
+            const percentage = total > 0 ? (completed / total) * 100 : 0;
+
+            document.getElementById('completedCount').textContent = completed;
+            document.getElementById('progressFill').style.width = percentage + '%';
+        }
+
+        initializeDashboard();
+    </script>
+</body>
+</html>
