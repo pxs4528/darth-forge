@@ -13,6 +13,7 @@ services:
   backend:
     image: ghcr.io/pxs4528/darth-forge-backend:latest
     container_name: darth-forge-backend
+    pull_policy: always
     env_file:
       - .env.vps
     environment:
@@ -30,6 +31,7 @@ services:
   frontend:
     image: ghcr.io/pxs4528/darth-forge-frontend:latest
     container_name: darth-forge-frontend
+    pull_policy: always
     command: caddy run --config /etc/caddy/Caddyfile.vps --adapter caddyfile
     env_file:
       - .env.vps
