@@ -107,6 +107,8 @@ jobs:
         env:
           SITE_DOMAIN: ${{ secrets.SITE_DOMAIN }}
           BUDGET_DOMAIN: ${{ secrets.BUDGET_DOMAIN }}
+          PUBLIC_IP: ${{ secrets.VPS_HOST }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           TAILSCALE_IP: ${{ secrets.TAILSCALE_IP }}
           ACME_EMAIL: ${{ secrets.ACME_EMAIL }}
           ADMIN_SECRET: ${{ secrets.ADMIN_SECRET }}
@@ -126,6 +128,8 @@ jobs:
           cat > .env.vps <<'EOF'
           SITE_DOMAIN=${{ env.SITE_DOMAIN }}
           BUDGET_DOMAIN=${{ env.BUDGET_DOMAIN }}
+          PUBLIC_IP=${{ env.PUBLIC_IP }}
+          CLOUDFLARE_API_TOKEN=${{ env.CLOUDFLARE_API_TOKEN }}
           TAILSCALE_IP=${{ env.TAILSCALE_IP }}
           ACME_EMAIL=${{ env.ACME_EMAIL }}
           ADMIN_SECRET=${{ env.ADMIN_SECRET }}

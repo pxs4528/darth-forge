@@ -26,7 +26,7 @@ done
 SITE_DOMAIN=$(grep -E '^SITE_DOMAIN=' "${ENV_FILE}" | cut -d= -f2-)
 BUDGET_DOMAIN=$(grep -E '^BUDGET_DOMAIN=' "${ENV_FILE}" | cut -d= -f2-)
 TAILSCALE_IP=$(grep -E '^TAILSCALE_IP=' "${ENV_FILE}" | cut -d= -f2-)
-PUBLIC_IP=$(curl -fsS --max-time 5 https://api.ipify.org || echo "")
+PUBLIC_IP=$(grep -E '^PUBLIC_IP=' "${ENV_FILE}" | cut -d= -f2-)
 
 # Portfolio (public) should resolve to public IP
 resolved=$(getent hosts "${SITE_DOMAIN}" | awk '{print $1}' | head -1 || true)
@@ -41,17 +41,12 @@ fi
 echo "==> Pulling images"
 docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" pull
 
+echo "==> Validating deployment configuration"
+docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" config --quiet
+docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" run --rm --no-deps frontend caddy validate --config /etc/caddy/Caddyfile.vps --adapter caddyfile
+
 echo "==> Starting"
 docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" up -d --remove-orphans
-
-echo "==> Enabling private budget HTTPS"
-if [[ $EUID -eq 0 ]]; then
-    tailscale serve --bg --https=8443 http://127.0.0.1:8081
-else
-    sudo -n tailscale serve --bg --https=8443 http://127.0.0.1:8081
-fi
-tailscale serve status
-curl --fail --silent --show-error http://127.0.0.1:8081/api/health
 
 echo "==> Pruning old images"
 docker image prune -f >/dev/null
