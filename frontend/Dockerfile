@@ -8,9 +8,18 @@ RUN npm install --no-audit --no-fund
 COPY frontend ./frontend
 RUN npm run build
 
-# Build Caddy with DNS-01 support. Buildx supplies the target platform.
-FROM docker.io/library/caddy:2-builder AS caddy-builder
-RUN xcaddy build --with github.com/caddy-dns/cloudflare
+# Run the compiler natively; Go cross-compiles the output for each target.
+# Keep this stage independent of frontend sources so UI edits reuse its layer.
+FROM --platform=$BUILDPLATFORM docker.io/library/caddy:2-builder AS caddy-builder
+ARG TARGETOS
+ARG TARGETARCH
+ARG TARGETVARIANT
+RUN set -eu; \
+    export CGO_ENABLED=0 GOOS="${TARGETOS}" GOARCH="${TARGETARCH}"; \
+    if [ "${TARGETARCH}" = "arm" ]; then \
+        export GOARM="${TARGETVARIANT#v}"; \
+    fi; \
+    xcaddy build --with github.com/caddy-dns/cloudflare --output /usr/bin/caddy
 
 # Stage 2: Caddy serves the bundle and proxies /api to the backend.
 FROM docker.io/library/caddy:2
