@@ -55,14 +55,22 @@
 
 # ── budget (private, Tailscale only) ────────────────────────────────────────
 
-# This hostname never serves the budget application on public ports.
+# Public listener denies the budget hostname even with forged Host/SNI.
 {$BUDGET_DOMAIN} {
+    tls {
+        dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+        resolvers 1.1.1.1 1.0.0.1
+    }
     respond "Not Found" 404
 }
 
-# Docker publishes this listener to host loopback only. Tailscale Serve
-# terminates HTTPS and proxies here; no public port maps to this listener.
-http://:8081 {
+# Internal port 8443 is published ONLY to the host Tailscale IP on port 443.
+# Do not bind the host IP inside the container or publish this on 0.0.0.0.
+https://{$BUDGET_DOMAIN}:8443 {
+    tls {
+        dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+        resolvers 1.1.1.1 1.0.0.1
+    }
     root * {$WEB_ROOT:/srv}
     encode gzip
     header {
@@ -72,7 +80,6 @@ http://:8081 {
         X-Robots-Tag "noindex, nofollow, noarchive"
         Cache-Control "no-store"
     }
-    redir / /budget 302
     handle /api/* {
         reverse_proxy {$API_HOST:backend}:{$API_PORT:8080}
     }

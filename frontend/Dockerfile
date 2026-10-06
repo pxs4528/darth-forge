@@ -8,8 +8,13 @@ RUN npm install --no-audit --no-fund
 COPY frontend ./frontend
 RUN npm run build
 
+# Build Caddy with DNS-01 support. Buildx supplies the target platform.
+FROM docker.io/library/caddy:2-builder AS caddy-builder
+RUN xcaddy build --with github.com/caddy-dns/cloudflare
+
 # Stage 2: Caddy serves the bundle and proxies /api to the backend.
 FROM docker.io/library/caddy:2
+COPY --from=caddy-builder /usr/bin/caddy /usr/bin/caddy
 COPY --from=builder /app/frontend/dist /srv
 # Caddyfile      — behind a Cloudflare Tunnel (the Pi): plain :80, no TLS.
 # Caddyfile.vps  — directly exposed: two hostnames, automatic HTTPS.

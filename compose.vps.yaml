@@ -42,9 +42,9 @@ services:
       - INFOSEC_HOST=infosec
       - INFOSEC_PORT=5000
     ports:
-      - "80:80"
-      - "443:443"
-      - "127.0.0.1:8081:8081" # Private upstream for Tailscale Serve
+      - "${PUBLIC_IP:?Set PUBLIC_IP}:80:80"
+      - "${PUBLIC_IP:?Set PUBLIC_IP}:443:443"
+      - "${TAILSCALE_IP:?Set TAILSCALE_IP}:443:8443" # Budget HTTPS: tailnet interface only
     volumes:
       # Certificates and ACME account state. Without this every restart
       # re-requests certificates and will hit Let's Encrypt rate limits.
