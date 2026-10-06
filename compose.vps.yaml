@@ -44,7 +44,7 @@ services:
     ports:
       - "80:80"
       - "443:443"
-      # Budget also listens on Tailscale IP
+      - "127.0.0.1:8081:8081" # Private upstream for Tailscale Serve
     volumes:
       # Certificates and ACME account state. Without this every restart
       # re-requests certificates and will hit Let's Encrypt rate limits.

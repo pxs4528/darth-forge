@@ -55,35 +55,29 @@
 
 # ── budget (private, Tailscale only) ────────────────────────────────────────
 
+# This hostname never serves the budget application on public ports.
 {$BUDGET_DOMAIN} {
-	root * {$WEB_ROOT:/srv}
-	encode gzip
+    respond "Not Found" 404
+}
 
-	header {
-		X-Content-Type-Options "nosniff"
-		X-Frame-Options "DENY"
-		Referrer-Policy "no-referrer"
-		Strict-Transport-Security "max-age=31536000; includeSubDomains"
-		# Nothing here should ever reach an index.
-		X-Robots-Tag "noindex, nofollow, noarchive"
-	}
-
-	respond /robots.txt 200 {
-		body "User-agent: *
-Disallow: /
-"
-	}
-
-	# Only the budget API. /api/infosec is deliberately not routed here — this
-	# host exposes the smallest surface that still works.
-	handle /api/* {
-		reverse_proxy {$API_HOST:backend}:{$API_PORT:8080}
-	}
-
-	# The router resolves "/" to the budget app on this hostname, so the same
-	# bundle serves both sites. See frontend/src/lib/router.ts.
-	handle {
-		try_files {path} /index.html
-		file_server
-	}
+# Docker publishes this listener to host loopback only. Tailscale Serve
+# terminates HTTPS and proxies here; no public port maps to this listener.
+http://:8081 {
+    root * {$WEB_ROOT:/srv}
+    encode gzip
+    header {
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "no-referrer"
+        X-Robots-Tag "noindex, nofollow, noarchive"
+        Cache-Control "no-store"
+    }
+    redir / /budget 302
+    handle /api/* {
+        reverse_proxy {$API_HOST:backend}:{$API_PORT:8080}
+    }
+    handle {
+        try_files {path} /index.html
+        file_server
+    }
 }
