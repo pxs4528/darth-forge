@@ -38,25 +38,26 @@ elif [[ -n "${PUBLIC_IP}" && "${resolved}" != "${PUBLIC_IP}" ]]; then
 	echo "   first certificate is issued."
 fi
 
-# Budget (Tailscale) should resolve to Tailscale IP (or public IP temporarily)
-resolved=$(getent hosts "${BUDGET_DOMAIN}" | awk '{print $1}' | head -1 || true)
-if [[ -z "${resolved}" ]]; then
-	echo "!! ${BUDGET_DOMAIN} does not resolve yet — Caddy will fail to get a certificate."
-elif [[ -n "${TAILSCALE_IP}" && "${resolved}" != "${TAILSCALE_IP}" && -n "${PUBLIC_IP}" && "${resolved}" != "${PUBLIC_IP}" ]]; then
-	echo "⚠ ${BUDGET_DOMAIN} resolves to ${resolved}, expected ${TAILSCALE_IP} (or ${PUBLIC_IP} temporarily)"
-fi
-
 echo "==> Pulling images"
-docker compose -f "${COMPOSE_FILE}" pull
+docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" pull
 
 echo "==> Starting"
-docker compose -f "${COMPOSE_FILE}" up -d --remove-orphans
+docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" up -d --remove-orphans
+
+echo "==> Enabling private budget HTTPS"
+if [[ $EUID -eq 0 ]]; then
+    tailscale serve --bg --https=8443 http://127.0.0.1:8081
+else
+    sudo -n tailscale serve --bg --https=8443 http://127.0.0.1:8081
+fi
+tailscale serve status
+curl --fail --silent --show-error http://127.0.0.1:8081/api/health
 
 echo "==> Pruning old images"
 docker image prune -f >/dev/null
 
 echo "==> Status"
-docker compose -f "${COMPOSE_FILE}" ps
+docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" ps
 
 cat <<EOF
 

@@ -148,34 +148,24 @@ jobs:
           INFOSEC_PORT=5000
           EOF
 
-      - name: Copy .env.vps to VPS via SCP
+      - name: Deploy configuration and containers from GitHub
         env:
           SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
           VPS_USER: ${{ secrets.VPS_USER }}
           VPS_HOST: ${{ secrets.VPS_HOST }}
         run: |
+          set -euo pipefail
           mkdir -p ~/.ssh
-          echo "$SSH_KEY" > ~/.ssh/vps_key
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/vps_key
           chmod 600 ~/.ssh/vps_key
+          trap 'rm -f ~/.ssh/vps_key .env.vps' EXIT
+          ssh -i ~/.ssh/vps_key -o StrictHostKeyChecking=no "$VPS_USER@$VPS_HOST" \
+            'mkdir -p ~/darth-forge/frontend ~/darth-forge/scripts'
           scp -i ~/.ssh/vps_key -o StrictHostKeyChecking=no \
-            .env.vps ${VPS_USER}@${VPS_HOST}:~/darth-forge/.env.vps
-          rm ~/.ssh/vps_key
-
-      - name: Trigger VPS deployment webhook
-        env:
-          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL_VPS }}
-          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET_VPS }}
-        run: |
-          PAYLOAD='{"ref":"${{ github.ref }}","repository":"${{ github.repository }}","pusher":"${{ github.actor }}","sha":"${{ github.sha }}"}'
-
-          SIGNATURE=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hmac "$WEBHOOK_SECRET" | sed 's/^.* //')
-
-          curl -X POST "$WEBHOOK_URL" \
-            -H "Content-Type: application/json" \
-            -H "X-Hub-Signature-256: sha256=$SIGNATURE" \
-            -H "X-GitHub-Event: push" \
-            -d "$PAYLOAD" \
-            --max-time 10 \
-            --retry 2 || echo "Warning: webhook delivery failed — run scripts/deploy-vps.sh on the VPS manually"
-
-          echo "✓ Deployment webhook sent"
+            .env.vps compose.vps.yaml "$VPS_USER@$VPS_HOST:~/darth-forge/"
+          scp -i ~/.ssh/vps_key -o StrictHostKeyChecking=no \
+            frontend/Caddyfile.vps "$VPS_USER@$VPS_HOST:~/darth-forge/frontend/"
+          scp -i ~/.ssh/vps_key -o StrictHostKeyChecking=no \
+            scripts/deploy-vps.sh "$VPS_USER@$VPS_HOST:~/darth-forge/scripts/"
+          ssh -i ~/.ssh/vps_key -o StrictHostKeyChecking=no "$VPS_USER@$VPS_HOST" \
+            'cd ~/darth-forge && chmod 600 .env.vps && bash scripts/deploy-vps.sh'
