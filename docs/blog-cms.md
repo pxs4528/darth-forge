@@ -9,8 +9,11 @@ Preview displays the current edits. Publish makes it public immediately, with
 no code change or redeployment. Save as draft unpublishes an existing post.
 Deleting is permanent and asks for confirmation. Slug changes change the URL.
 
-Bodies are plain text; blank lines create paragraphs. HTML is escaped, not
-executed. This first version has no image upload or rich text formatting.
+Bodies support Markdown. Select text and use the toolbar for headings, bold,
+italics, links, lists, quotes, images, and fenced code. Ctrl/Cmd+B and I work
+in the body. Preview and published articles use identical sanitized rendering.
+Images require hosted HTTPS URLs; file uploads are not supported.
+Unsafe scripts, event handlers, and embedded frames are removed.
 The editor holds the login token in memory: reload or backend restart requires
 login again. Unsaved edits are not persisted; save drafts regularly.
 

@@ -32,6 +32,9 @@ const Navbar = (props: Props) => {
           <span>root@darth-forge:~$</span>
         </div>
         <div class="flex gap-4 flex-wrap">
+          <a href="/blog" class="px-3 py-1 text-white hover:bg-white/20">
+            blog ↗
+          </a>
           {files.map((f) => (
             <button
               onClick={() => handleClick(f)}
@@ -39,8 +42,7 @@ const Navbar = (props: Props) => {
                 active() === f
                   ? "bg-[#fff] text-black font-medium"
                   : "text-white hover:bg-[#fff]/20"
-              }`}
-            >
+              }`}>
               {f}
             </button>
           ))}

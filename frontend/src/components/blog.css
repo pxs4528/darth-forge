@@ -276,3 +276,121 @@
 .blog-intro h1 span {
   color: #bad0ac;
 }
+
+.blog-format-bar {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 24px 0 10px;
+  padding: 12px;
+  border: 1px solid #36403a;
+  border-radius: 6px;
+  background: #202721;
+}
+.blog-format-bar button {
+  font-size: 12px;
+  padding: 7px 10px;
+}
+.blog-format-hint {
+  font-size: 12px;
+  color: #a2aca3;
+  line-height: 1.5;
+}
+.blog-prose p {
+  white-space: normal;
+}
+.blog-prose h1,
+.blog-prose h2,
+.blog-prose h3 {
+  font-family: "EB Garamond", Georgia, serif;
+  line-height: 1.2;
+  letter-spacing: 0;
+  margin: 1.5em 0 0.6em;
+}
+.blog-prose h1 {
+  font-size: 40px;
+}
+.blog-prose h2 {
+  font-size: 34px;
+}
+.blog-prose h3 {
+  font-size: 28px;
+}
+.blog-prose a {
+  color: #bad0ac;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.blog-prose ul {
+  list-style: disc;
+}
+.blog-prose ol {
+  list-style: decimal;
+}
+.blog-prose ul,
+.blog-prose ol {
+  padding-left: 1.5em;
+  margin: 1em 0;
+}
+.blog-prose blockquote {
+  border-left: 2px solid #bad0ac;
+  margin: 1.5em 0;
+  padding: 0 1em;
+  color: #b8c5ae;
+  font-style: italic;
+}
+.blog-prose pre {
+  background: #101512;
+  border: 1px solid #36403a;
+  border-radius: 6px;
+  padding: 20px;
+  overflow: auto;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.blog-prose code {
+  font-family: Consolas, monospace;
+  font-size: 0.8em;
+  background: #222c24;
+  border-radius: 3px;
+  padding: 2px 5px;
+}
+.blog-prose pre code {
+  background: transparent;
+  padding: 0;
+  font-size: inherit;
+}
+.blog-prose img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 6px;
+  margin: 25px auto;
+}
+.blog-prose table {
+  display: block;
+  overflow: auto;
+  border-collapse: collapse;
+  font-size: 18px;
+}
+.blog-prose td,
+.blog-prose th {
+  border: 1px solid #455342;
+  padding: 10px 14px;
+}
+.blog-prose hr {
+  border: 0;
+  border-top: 1px solid #455342;
+  margin: 40px 0;
+}
+
+.blog-app-switch {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+.blog-app-switch a[aria-current] {
+  text-decoration: underline;
+  text-underline-offset: 6px;
+  color: #e7e4d9;
+}

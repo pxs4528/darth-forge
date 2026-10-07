@@ -150,6 +150,14 @@ const BudgetPage: Component = () => {
               </button>
             </Show>
 
+            <nav class="flex items-center gap-3 t-label" aria-label="Private apps">
+              <a href="/budget" aria-current="page" class="ink">
+                Budget
+              </a>
+              <a href="/cms" class="ink-2 hover:underline">
+                CMS
+              </a>
+            </nav>
             <span class="t-label ink tabular-nums">{monthLabel(store.month())}</span>
 
             <div class="flex items-center gap-1">

@@ -1,3 +1,5 @@
+import { loadToken, saveToken, clearToken } from "../budget/api";
+import { renderMarkdown } from "../lib/markdown";
 import { createSignal, For, onMount, Show } from "solid-js";
 import "./blog.css";
 
@@ -21,28 +23,53 @@ const empty = (): Post => ({
   published_at: "",
   updated_at: "",
 });
-// Render text through Solid's escaping, never innerHTML. Blank lines form paragraphs.
+// Public articles and preview use the same sanitized Markdown renderer.
 const Article = (props: { post: Post }) => (
   <article class="blog-article">
     <span class="blog-eyebrow">FIELD NOTES / PARTH SHARMA</span>
     <h1>{props.post.title || "Untitled story"}</h1>
     <p class="blog-deck">{props.post.excerpt}</p>
-    <div class="blog-prose">
-      <For each={props.post.body.split(/\n\s*\n/)}>{(paragraph) => <p>{paragraph}</p>}</For>
-    </div>
+    <div class="blog-prose" innerHTML={renderMarkdown(props.post.body)} />
   </article>
 );
 
 export default function Blog(props: { editor?: boolean }) {
   const [posts, setPosts] = createSignal<Post[]>([]);
   const [post, setPost] = createSignal<Post>(empty());
-  const [token, setToken] = createSignal("");
+  const [token, setToken] = createSignal(props.editor ? loadToken() : "");
   const [password, setPassword] = createSignal("");
   const [message, setMessage] = createSignal("");
   const [busy, setBusy] = createSignal(false);
   const [loaded, setLoaded] = createSignal(false);
   const [preview, setPreview] = createSignal(false);
   const [dirty, setDirty] = createSignal(false);
+  let bodyInput: HTMLTextAreaElement | undefined;
+  function format(before: string, after = "", placeholder = "text") {
+    if (!bodyInput) return;
+    const start = bodyInput.selectionStart,
+      end = bodyInput.selectionEnd;
+    const selected = post().body.slice(start, end) || placeholder;
+    update(
+      "body",
+      post().body.slice(0, start) + before + selected + after + post().body.slice(end)
+    );
+    queueMicrotask(() => {
+      bodyInput?.focus();
+      bodyInput?.setSelectionRange(start + before.length, start + before.length + selected.length);
+    });
+  }
+  function link(image = false) {
+    const url = prompt(image ? "Image URL (HTTPS)" : "Link URL (HTTPS)", "https://");
+    if (!url) return;
+    try {
+      if (new URL(url).protocol !== "https:") throw new Error();
+    } catch {
+      setMessage("Please enter a valid HTTPS URL.");
+      return;
+    }
+    const safe = url.replace(/\(/g, "%28").replace(/\)/g, "%29");
+    format(image ? "![" : "[", `](${safe})`, image ? "Describe the image" : "Link text");
+  }
   const endpoint = () => (props.editor ? "/api/admin/blog" : "/api/blog");
   async function request(url: string, method = "GET", body?: unknown) {
     const res = await fetch(url, {
@@ -52,7 +79,10 @@ export default function Blog(props: { editor?: boolean }) {
     });
     const data = await res.json();
     if (!res.ok) {
-      if (res.status === 401) setToken("");
+      if (res.status === 401) {
+        clearToken();
+        setToken("");
+      }
       throw new Error(data.error || "Request failed");
     }
     return data;
@@ -77,7 +107,7 @@ export default function Blog(props: { editor?: boolean }) {
     }
   }
   onMount(() => {
-    if (!props.editor) void run(load);
+    if (!props.editor || token()) void run(load);
   });
   function edit(p: Post) {
     if (dirty() && !confirm("Discard unsaved edits?")) return;
@@ -108,6 +138,18 @@ export default function Blog(props: { editor?: boolean }) {
         <a href="/">← {props.editor ? "Budget home" : "Portfolio"}</a>
         <span>pipboi / {props.editor ? "writing desk" : "journal"}</span>
         <Show when={props.editor && token()}>
+          <nav class="blog-app-switch" aria-label="Private apps">
+            <a
+              href="/budget"
+              onClick={(e) => {
+                if (dirty() && !confirm("Discard unsaved edits?")) e.preventDefault();
+              }}>
+              Budget
+            </a>
+            <a href="/cms" aria-current="page">
+              CMS
+            </a>
+          </nav>
           <button
             onClick={() => {
               if (!dirty() || confirm("Discard unsaved edits and sign out?")) {
@@ -173,6 +215,7 @@ export default function Blog(props: { editor?: boolean }) {
                 e.preventDefault();
                 void run(async () => {
                   const auth = await request("/api/admin/auth", "POST", { password: password() });
+                  saveToken(auth.token, false);
                   setToken(auth.token);
                   setPassword("");
                   await load();
@@ -257,9 +300,52 @@ export default function Blog(props: { editor?: boolean }) {
                     onInput={(e) => update("excerpt", e.currentTarget.value)}
                   />
                 </label>
+                <div class="blog-format-bar" role="group" aria-label="Story formatting">
+                  <button type="button" onClick={() => format("**", "**")}>
+                    Bold
+                  </button>
+                  <button type="button" onClick={() => format("*", "*")}>
+                    Italic
+                  </button>
+                  <button type="button" onClick={() => format("\n\n## ", "\n\n", "Heading")}>
+                    Heading
+                  </button>
+                  <button type="button" onClick={() => link()}>
+                    Link
+                  </button>
+                  <button type="button" onClick={() => link(true)}>
+                    Image
+                  </button>
+                  <button type="button" onClick={() => format("\n\n- ", "\n\n", "List item")}>
+                    Bullets
+                  </button>
+                  <button type="button" onClick={() => format("\n\n1. ", "\n\n", "List item")}>
+                    Numbered list
+                  </button>
+                  <button type="button" onClick={() => format("\n\n> ", "\n\n", "Quote")}>
+                    Quote
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => format("\n\n```\n", "\n```\n\n", "Your code")}>
+                    Code block
+                  </button>
+                </div>
+                <p class="blog-format-hint">
+                  Select text and choose formatting. Preview shows the published layout. Images use
+                  a hosted HTTPS URL.
+                </p>
                 <label>
                   Story
                   <textarea
+                    ref={bodyInput}
+                    onKeyDown={(e) => {
+                      if ((e.ctrlKey || e.metaKey) && ["b", "i"].includes(e.key.toLowerCase())) {
+                        e.preventDefault();
+                        const marker = e.key.toLowerCase() === "b" ? "**" : "*";
+                        format(marker, marker);
+                      }
+                    }}
                     class="blog-body"
                     rows="16"
                     placeholder="Start writing… Separate paragraphs with a blank line. Plain text is supported; HTML is displayed as text."
