@@ -30,7 +30,10 @@
 	# The budget tool lives on its own hostname. Refusing it here means the
 	# admin login isn't even reachable from the address that gets crawled,
 	# scanned and linked. 404 rather than 403: no need to confirm it exists.
-	handle /budget* {
+	handle /cms* {
+respond "Not Found" 404
+}
+handle /budget* {
 		respond "Not Found" 404
 	}
 	handle /api/admin/* {

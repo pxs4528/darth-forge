@@ -6,28 +6,14 @@ import (
 	"backend/internal/logger"
 	"backend/internal/plaid"
 	"backend/internal/services"
-	"backend/internal/websocket"
-	"encoding/json"
+
 	"net/http"
 	"time"
 )
 
 func main() {
-	// Initialize logger and hub
+	// Backend logging stays server-side; no public log streaming.
 	log := logger.GetLogger()
-	hub := websocket.NewHub()
-
-	// Start WebSocket hub
-	go hub.Run()
-
-	// Subscribe logger to hub
-	go func() {
-		logChan := log.Subscribe()
-		for entry := range logChan {
-			data, _ := json.Marshal(entry)
-			hub.Broadcast(data)
-		}
-	}()
 
 	// Initialize USCIS poller (polls every 30 minutes)
 	uscisPoller := services.NewUSCISPoller(log)
@@ -58,12 +44,16 @@ func main() {
 	}
 
 	// Initialize handlers
-	logsHandler := handlers.NewLogsHandler(hub, log)
+
 	webhookHandler := handlers.NewWebhookHandler(log)
 	telemetryHandler := handlers.NewTelemetryHandler(log)
 	uscisHandler := handlers.NewUSCISHandler(log, uscisPoller)
 	budgetHandler := handlers.NewBudgetHandler(log, budgetDB)
 	plaidHandler := handlers.NewPlaidHandler(log, budgetDB, plaidClient)
+
+	blogHandler := handlers.NewBlogHandler(budgetDB)
+	http.HandleFunc("/api/blog", blogHandler.Public)
+	http.HandleFunc("/api/admin/blog", handlers.AdminOnly(blogHandler.Admin))
 
 	// Routes
 	http.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
@@ -71,8 +61,6 @@ func main() {
 		w.Write([]byte(`{"status":"healthy"}`))
 	})
 
-	http.HandleFunc("/api/logs/stream", logsHandler.HandleWebSocket)
-	http.HandleFunc("/api/logs", logsHandler.HandleGetLogs)
 	http.HandleFunc("/api/webhook", webhookHandler.HandleWebhook)
 	http.HandleFunc("/api/telemetry", telemetryHandler.HandleTelemetry)
 
