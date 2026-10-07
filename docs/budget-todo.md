@@ -190,6 +190,28 @@ new book".
       opens, and never touched again; a table would have needed a migration, an
       endpoint and a UI to express one date.
 
+- [ ] **OAuth redirect for Chase and Capital One.** `/link/token/create` in
+      `internal/plaid/client.go` sends no `redirect_uri`. Sandbox doesn't need
+      one and every sandbox institution links fine without it — but **Chase and
+      Capital One are OAuth-only in production**, and on web Plaid requires a
+      registered redirect URI for those. Selecting them in Link will fail until
+      three things exist:
+
+      1. `redirect_uri` in the `/link/token/create` body (both the normal and
+         the update-mode call), e.g. `https://budget.pipboi.dev/budget`.
+      2. That exact URI registered at dashboard.plaid.com → Team Settings →
+         API → Allowed redirect URIs. Plaid never fetches it; the browser is
+         what navigates there, so a tailnet-only host is fine as long as the
+         browser doing the linking is on the tailnet.
+      3. Re-initialising Link on return. The bank sends the browser back with
+         an `oauth_state_id` in the URL, and `openPlaidLink` currently has no
+         path for that — it needs to re-create the handler with the *same*
+         link token plus `receivedRedirectUri`, rather than minting a new one.
+
+      Two of the seven Items are affected. The other five should link with
+      plain credentials and need none of this, so it isn't a blocker for
+      starting — just for finishing.
+
 ## Code — worth doing
 
 - [ ] **Tests for `handlers/plaid.go`.** The package sits at 8.6% coverage

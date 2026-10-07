@@ -12,5 +12,9 @@
     "@testing-library/jest-dom": "^6.9.1",
     "jsdom": "^27.4.0",
     "vitest": "^4.0.16"
+  },
+  "dependencies": {
+    "dompurify": "^3.4.16",
+    "marked": "^18.1.0"
   }
 }
