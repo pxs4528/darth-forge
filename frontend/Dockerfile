@@ -4,7 +4,8 @@
 FROM --platform=$BUILDPLATFORM docker.io/library/node:20-slim AS builder
 WORKDIR /app
 COPY package*.json ./
-RUN npm install --no-audit --no-fund
+COPY frontend/package.json ./frontend/package.json
+RUN HUSKY=0 npm ci --no-audit --no-fund
 COPY frontend ./frontend
 RUN npm run build
 
