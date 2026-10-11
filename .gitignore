@@ -33,6 +33,7 @@ compose.override.yaml
 compose.prod.yaml
 
 # IDE
+.claude/
 .vscode/
 .idea/
 *.swp
@@ -50,6 +51,5 @@ Thumbs.db
 # Lock files (keep only package-lock.json)
 pnpm-lock.yaml
 yarn.lock
-.env.vps
 .webhook_secret
 .webhook.log
