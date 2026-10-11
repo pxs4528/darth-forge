@@ -1,12 +1,27 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
+	"encoding/json"
 	_ "modernc.org/sqlite"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
+
+type testBlogPublisher struct {
+	err                error
+	publishes, removes int
+}
+
+func (f *testBlogPublisher) Publish(_ context.Context, p, _ BlogPost) (BlogPost, error) {
+	f.publishes++
+	p.GithubSHA = "blob"
+	p.CommitURL = "https://github.com/owner/repo/commit/abc123"
+	return p, f.err
+}
+func (f *testBlogPublisher) Remove(_ context.Context, _ BlogPost) error { f.removes++; return f.err }
 
 func TestBlogDraftPrivacyAndAuth(t *testing.T) {
 	conn, err := sql.Open("sqlite", ":memory:")
@@ -16,7 +31,17 @@ func TestBlogDraftPrivacyAndAuth(t *testing.T) {
 	defer conn.Close()
 	conn.SetMaxOpenConns(1)
 	h := NewBlogHandler(conn)
+	h.publisher = &testBlogPublisher{}
 	call := func(method, path, body string, admin bool) *httptest.ResponseRecorder {
+		if method == "POST" {
+			var p BlogPost
+			_ = json.Unmarshal([]byte(body), &p)
+			if p.ID != 0 {
+				_ = conn.QueryRow(`SELECT updated_at FROM blog_posts WHERE id=?`, p.ID).Scan(&p.UpdatedAt)
+				data, _ := json.Marshal(p)
+				body = string(data)
+			}
+		}
 		r := httptest.NewRequest(method, path, strings.NewReader(body))
 		w := httptest.NewRecorder()
 		h.Handle(w, r, admin)

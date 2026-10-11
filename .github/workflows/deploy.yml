@@ -7,6 +7,9 @@ name: CI + Deploy
 on:
   push:
     branches: [main]
+    # Writing-desk commits are published through the API, without rebuilding containers.
+    paths-ignore:
+      - 'content/blog/**'
   pull_request:
     branches: [main]
 
@@ -115,6 +118,7 @@ jobs:
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
           BACKUP_TOKEN: ${{ secrets.BACKUP_TOKEN }}
+          BLOG_GITHUB_TOKEN: ${{ secrets.BLOG_GITHUB_TOKEN }}
           PLAID_CLIENT_ID: ${{ secrets.PLAID_CLIENT_ID }}
           PLAID_SECRET: ${{ secrets.PLAID_SECRET }}
           PLAID_ENV: ${{ secrets.PLAID_ENV }}
@@ -136,6 +140,9 @@ jobs:
           TURSO_DATABASE_URL=${{ env.TURSO_DATABASE_URL }}
           TURSO_AUTH_TOKEN=${{ env.TURSO_AUTH_TOKEN }}
           BACKUP_TOKEN=${{ env.BACKUP_TOKEN }}
+          BLOG_GITHUB_TOKEN=${{ env.BLOG_GITHUB_TOKEN }}
+          BLOG_GITHUB_REPOSITORY=${{ github.repository }}
+          BLOG_GITHUB_BRANCH=main
           PLAID_CLIENT_ID=${{ env.PLAID_CLIENT_ID }}
           PLAID_SECRET=${{ env.PLAID_SECRET }}
           PLAID_ENV=${{ env.PLAID_ENV }}

@@ -1,5 +1,6 @@
 import { loadToken, saveToken, clearToken } from "../budget/api";
-import { renderMarkdown } from "../lib/markdown";
+import BlogProse from "./BlogProse";
+import BlogMetadata from "./BlogMetadata";
 import { createSignal, For, onMount, Show } from "solid-js";
 import "./blog.css";
 
@@ -12,6 +13,8 @@ type Post = {
   published: boolean;
   published_at: string;
   updated_at: string;
+  commit_url?: string;
+  github_sha?: string;
 };
 const empty = (): Post => ({
   id: 0,
@@ -28,8 +31,9 @@ const Article = (props: { post: Post }) => (
   <article class="blog-article">
     <span class="blog-eyebrow">FIELD NOTES / PARTH SHARMA</span>
     <h1>{props.post.title || "Untitled story"}</h1>
+    <BlogMetadata post={props.post} />
     <p class="blog-deck">{props.post.excerpt}</p>
-    <div class="blog-prose" innerHTML={renderMarkdown(props.post.body)} />
+    <BlogProse body={props.post.body} />
   </article>
 );
 
@@ -59,12 +63,18 @@ export default function Blog(props: { editor?: boolean }) {
     });
   }
   function link(image = false) {
-    const url = prompt(image ? "Image URL (HTTPS)" : "Link URL (HTTPS)", "https://");
+    const url = prompt(
+      image ? "Image URL (HTTPS)" : "Link URL (HTTPS or /blog/post-slug)",
+      image ? "https://" : "/blog/"
+    );
     if (!url) return;
     try {
-      if (new URL(url).protocol !== "https:") throw new Error();
+      const internal = !image && /^\/blog\/[a-z0-9]+(?:-[a-z0-9]+)*(?:#[\w-]+)?$/.test(url);
+      if (!internal && new URL(url).protocol !== "https:") throw new Error();
     } catch {
-      setMessage("Please enter a valid HTTPS URL.");
+      setMessage(
+        image ? "Please enter a valid HTTPS URL." : "Enter an HTTPS URL or /blog/post-slug."
+      );
       return;
     }
     const safe = url.replace(/\(/g, "%28").replace(/\)/g, "%29");
@@ -79,6 +89,11 @@ export default function Blog(props: { editor?: boolean }) {
     });
     const data = await res.json();
     if (!res.ok) {
+      // A first publish can reserve a private draft before GitHub fails.
+      // Keep its durable ID/version so retrying uses the same repository file.
+      if (method === "POST" && url === endpoint() && data.id && data.updated_at) {
+        setPost((p) => ({ ...p, id: data.id, updated_at: data.updated_at }));
+      }
       if (res.status === 401) {
         clearToken();
         setToken("");
@@ -128,7 +143,9 @@ export default function Blog(props: { editor?: boolean }) {
       if (saved) setPost(saved);
       setDirty(false);
       setMessage(
-        published ? "Published. Your story is live." : "Draft saved. Only you can see it."
+        published
+          ? "Committed to GitHub. Your story is live."
+          : "Draft saved. Only you can see it here; earlier published versions remain in GitHub history."
       );
     });
   }
@@ -190,10 +207,10 @@ export default function Blog(props: { editor?: boolean }) {
               {(p) => (
                 <a class="blog-card" href={`/blog/${p.slug}`}>
                   <span class="blog-eyebrow">
-                    {p.published_at.slice(0, 10)} ·{" "}
                     {Math.max(1, Math.ceil(p.body.split(/\s+/).length / 200))} MIN READ
                   </span>
                   <h2>{p.title}</h2>
+                  <BlogMetadata post={p} link={false} />
                   <p>{p.excerpt}</p>
                   <span class="blog-read">Read story ↗</span>
                 </a>
@@ -333,7 +350,12 @@ export default function Blog(props: { editor?: boolean }) {
                 </div>
                 <p class="blog-format-hint">
                   Select text and choose formatting. Preview shows the published layout. Images use
-                  a hosted HTTPS URL.
+                  a hosted HTTPS URL. Link to another story with /blog/post-slug. Paste emojis or
+                  press Windows + . to open the emoji picker.
+                </p>
+                <p class="blog-format-hint">
+                  Publishing saves a Markdown version in GitHub. Drafts stay private; published
+                  versions remain in GitHub history even after unpublishing or deleting a story.
                 </p>
                 <label>
                   Story
@@ -362,18 +384,26 @@ export default function Blog(props: { editor?: boolean }) {
                   class="blog-primary"
                   disabled={busy()}
                   onClick={() => {
-                    if (confirm("Publish this story on your public portfolio?")) void save(true);
+                    if (confirm("Commit this story to GitHub and publish it on your portfolio?"))
+                      void save(true);
                   }}>
-                  Publish story ↗
+                  Commit & publish ↗
                 </button>
                 <Show when={post().id}>
                   <button
                     class="blog-delete"
                     disabled={busy()}
                     onClick={() => {
-                      if (confirm("Permanently delete this story?"))
+                      if (
+                        confirm(
+                          "Delete this story from the site and remove its current GitHub file? Earlier published versions remain in GitHub history."
+                        )
+                      )
                         void run(async () => {
-                          await request(endpoint(), "DELETE", { id: post().id });
+                          await request(endpoint(), "DELETE", {
+                            id: post().id,
+                            updated_at: post().updated_at,
+                          });
                           setPost(empty());
                           setDirty(false);
                           await load();
